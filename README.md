@@ -1,4 +1,4 @@
-# 🚀 Code Review Website
+# ► Code Review Website
 
 > An intelligent AI-powered code review platform with real-time collaboration, supporting multiple AI models for comprehensive code analysis and feedback
 
@@ -32,33 +32,33 @@ The platform features:
 - 🎨 Modern, responsive UI
 - ⚡ High-performance backend
 
-## ✨ Key Features
+## ✦ Key Features
 
-### 🤖 AI-Powered Code Review
+### ◆ AI-Powered Code Review
 - Support for multiple AI models (GPT-4, Claude, etc.)
 - Intelligent code analysis and suggestions
 - Context-aware feedback
 - Multi-language support
 
-### 💬 Real-Time Communication
+### ◆ Real-Time Communication
 - WebSocket-powered instant messaging
 - Live AI response streaming
 - Notification system
 - Conversation persistence
 
-### 🔐 Security & Authentication
+### ◆ Security & Authentication
 - JWT-based authentication
 - Secure password hashing
 - Protected API endpoints
 - User session management
 
-### 📱 Responsive Design
+### ◆ Responsive Design
 - Mobile-friendly interface
 - Modern dark/light theme support
 - Smooth animations
 - Accessible UI components
 
-### 📊 User Management
+### ◆ User Management
 - User registration and login
 - Profile management
 - Chat history tracking
@@ -85,7 +85,7 @@ The platform features:
 └─────────────────────────────────────────────────────────────┘
 ```
 
-## 📁 Project Structure
+## ▪ Project Structure
 
 ```
 code-review-website/
@@ -135,7 +135,7 @@ code-review-website/
 └── README.md                   # This file
 ```
 
-## 🛠️ Tech Stack
+## ◆ Tech Stack
 
 ### Frontend
 - **Framework:** React 18+
@@ -161,7 +161,7 @@ code-review-website/
 - **LLM Integration:** OpenAI API / Hugging Face
 - **Dependencies:** Listed in `requirement.txt`
 
-## 📦 Installation
+## ◇ Installation
 
 ### Prerequisites
 - **Node.js** v16 or higher
@@ -193,7 +193,7 @@ cd ../ai
 pip install -r requirement.txt
 ```
 
-## ⚙️ Configuration
+## ◆ Configuration
 
 ### Environment Variables
 
@@ -230,7 +230,7 @@ OPENAI_MODEL=gpt-4
 PORT=8000
 ```
 
-## 🚀 Running the Project
+## ► Running the Project
 
 ### Start MongoDB
 ```bash
@@ -273,7 +273,7 @@ Open your browser and navigate to:
 http://localhost:5173
 ```
 
-## 📡 API Documentation
+## ◆ API Documentation
 
 ### Authentication Endpoints
 
@@ -351,17 +351,17 @@ Response: 200 OK
 ]
 ```
 
-## 🔐 Security Features
+## ◆ Security Features
 
-- ✅ JWT-based authentication
-- ✅ Password hashing with bcrypt
-- ✅ CORS protection
-- ✅ Input validation and sanitization
-- ✅ Rate limiting (recommended)
-- ✅ Secure session management
-- ✅ Environment variable protection
+- [✓] JWT-based authentication
+- [✓] Password hashing with bcrypt
+- [✓] CORS protection
+- [✓] Input validation and sanitization
+- [✓] Rate limiting (recommended)
+- [✓] Secure session management
+- [✓] Environment variable protection
 
-## 🤝 Contributing
+## ◆ Contributing
 
 We welcome contributions! Here's how:
 
@@ -387,7 +387,7 @@ We welcome contributions! Here's how:
 
 5. **Open a Pull Request**
 
-## 📝 Code Style
+## ▪ Code Style
 
 - Use ESLint for JavaScript/TypeScript
 - Follow PEP 8 for Python code
@@ -395,7 +395,7 @@ We welcome contributions! Here's how:
 - Add comments for complex logic
 - Write unit tests for new features
 
-## 🐛 Known Issues & Roadmap
+## ◆ Known Issues & Roadmap
 
 ### Planned Features
 - [ ] Support for more AI models
@@ -409,22 +409,22 @@ We welcome contributions! Here's how:
 ### Known Issues
 - None currently reported
 
-## 📞 Support
+## ◆ Support
 
 For issues, questions, or suggestions:
-- 📧 Email: support@codereview.com
-- 🐛 GitHub Issues: [Report a bug](https://github.com/yourusername/code-review-website/issues)
-- 💬 Discussions: [Join our community](https://github.com/yourusername/code-review-website/discussions)
+- [>] Email: support@codereview.com
+- [>] GitHub Issues: [Report a bug](https://github.com/yourusername/code-review-website/issues)
+- [>] Discussions: [Join our community](https://github.com/yourusername/code-review-website/discussions)
 
-## 📄 License
+## ▪ License
 
 This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.
 
 ---
 
-## 🙏 Acknowledgments
+## ◆ Acknowledgments
 
-- Built with ❤️ by the development team
+- Built with dedication by the development team
 - Thanks to all contributors
 - Powered by OpenAI and modern web technologies
 
@@ -432,8 +432,8 @@ This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) 
 
 <div align="center">
 
-**[⬆ back to top](#-code-review-website)**
+**[^ back to top](#-code-review-website)**
 
-Made with 💻 and ☕ by developers, for developers
+Made with attention to detail by developers, for developers
 
 </div>
