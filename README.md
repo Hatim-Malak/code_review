@@ -1,403 +1,546 @@
-# ► Code Review Website
+# HatMind — AI-Powered Python Code Review Assistant
 
-> An intelligent AI-powered code review platform with real-time collaboration, supporting multiple AI models for comprehensive code analysis and feedback
+HatMind is a full-stack web application for asking coding questions, getting AI-powered Python code reviews, and continuing a conversation with persistent chat history. The product is split into three main parts:
 
-![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)
-![License](https://img.shields.io/badge/license-MIT-green.svg)
-![Node](https://img.shields.io/badge/node-v16+-brightgreen.svg)
-![Python](https://img.shields.io/badge/python-3.8+-blue.svg)
+- Frontend: a React + Vite app with a polished chat experience
+- Backend: an Express + Node.js API that handles authentication, chat persistence, and Socket.IO events
+- AI service: a FastAPI + Python service that routes queries through language detection, knowledge-base retrieval, web search, and LLM generation
 
-## 📋 Table of Contents
+This repository is designed for local development first, but the frontend and backend are also wired for deployment-friendly environments.
 
-- [Overview](#overview)
-- [Features](#features)
-- [Architecture](#architecture)
-- [Project Structure](#project-structure)
-- [Tech Stack](#tech-stack)
+## Table of Contents
+
+- [What the app does](#what-the-app-does)
+- [Core features](#core-features)
+- [How the system works end-to-end](#how-the-system-works-end-to-end)
+- [Project structure](#project-structure)
+- [Technology stack](#technology-stack)
+- [Prerequisites](#prerequisites)
+- [Environment setup](#environment-setup)
 - [Installation](#installation)
-- [Configuration](#configuration)
-- [Running the Project](#running-the-project)
-- [API Documentation](#api-documentation)
-- [Contributing](#contributing)
+- [Running the app locally](#running-the-app-locally)
+- [API reference](#api-reference)
+- [Important implementation details](#important-implementation-details)
+- [Troubleshooting](#troubleshooting)
 
-## 🎯 Overview
+## What the app does
 
-Code Review Website is a full-stack web application that leverages AI technology to provide intelligent, real-time code reviews. Users can upload code snippets, select from multiple AI models, and receive detailed feedback and suggestions for improvement.
+Users can:
 
-The platform features:
-- 🔐 Secure user authentication
-- 💬 Real-time WebSocket communication
-- 🤖 Multiple AI model support
-- 📚 Persistent chat history
-- 🎨 Modern, responsive UI
-- ⚡ High-performance backend
+- create an account and log in securely
+- access a chat-based interface for asking Python coding questions
+- paste or describe code and receive AI-generated explanations, bug findings, optimization guidance, or refactors
+- keep a conversation history for their account
+- receive live updates while the AI is generating a reply
 
-## ✦ Key Features
+The experience is optimized around Python, and the AI service explicitly classifies whether a request is Python-related before answering.
 
-### ◆ AI-Powered Code Review
-- Support for multiple AI models (GPT-4, Claude, etc.)
-- Intelligent code analysis and suggestions
-- Context-aware feedback
-- Multi-language support
+## Core features
 
-### ◆ Real-Time Communication
-- WebSocket-powered instant messaging
-- Live AI response streaming
-- Notification system
-- Conversation persistence
+### 1. Authentication and protected access
 
-### ◆ Security & Authentication
-- JWT-based authentication
-- Secure password hashing
-- Protected API endpoints
-- User session management
+The app includes full user auth flow:
 
-### ◆ Responsive Design
-- Mobile-friendly interface
-- Modern dark/light theme support
-- Smooth animations
-- Accessible UI components
+- sign up with full name, email, and password
+- log in with email and password
+- logout
+- session checks using a JWT stored in an HTTP-only cookie
+- protected routes on the backend using middleware that verifies the token and loads the authenticated user
 
-### ◆ User Management
-- User registration and login
-- Profile management
-- Chat history tracking
-- Usage analytics
+The backend auth flow is implemented in:
 
-## 🏗️ Architecture
+- [Backend/src/controller/auth.controller.js](Backend/src/controller/auth.controller.js)
+- [Backend/src/middleware/auth.middleware.js](Backend/src/middleware/auth.middleware.js)
+- [Backend/src/lib/util.js](Backend/src/lib/util.js)
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                        Frontend (React)                      │
-│                    (Vite + TypeScript + Tailwind)            │
-└─────────────────────┬───────────────────────────────────────┘
-                      │ HTTP/WebSocket
-                      ↓
-┌─────────────────────────────────────────────────────────────┐
-│                    Backend (Node.js)                         │
-│              (Express + MongoDB + Socket.io)                 │
-└─────────────────────┬───────────────────────────────────────┘
-                      │ HTTP
-                      ↓
-┌─────────────────────────────────────────────────────────────┐
-│                   AI Service (Python)                        │
-│           (FastAPI/Flask + LLM Integration)                  │
-└─────────────────────────────────────────────────────────────┘
-```
+### 2. Chat experience in the browser
 
-## ▪ Project Structure
+The frontend chat experience includes:
 
-```
+- a large message composer for sending prompts or pasted code
+- suggested starter prompts such as review, optimize, find bugs, and refactor
+- message rendering that supports both plain text and code blocks
+- animated code blocks for readability
+- automatic scroll to the latest message
+- loading state while a request is pending
+
+The main UI is implemented in:
+
+- [Frontend/src/pages/ChatPage.jsx](Frontend/src/pages/ChatPage.jsx)
+- [Frontend/src/store/useChatStore.js](Frontend/src/store/useChatStore.js)
+
+### 3. AI-powered response generation
+
+When the user submits a prompt, the app sends the request to the Python AI service. The service performs the following:
+
+- checks whether the input is related to Python
+- decides whether to answer directly, use a retrieval-augmented generation (RAG) lookup, or fall back to web search
+- optionally queries a knowledge base stored in Pinecone
+- optionally runs a web search via Tavily
+- generates an answer using a Groq-backed LLM
+
+This logic is implemented in:
+
+- [ai/main.py](ai/main.py)
+
+### 4. Persistent chat history
+
+Every successful prompt is saved to MongoDB with:
+
+- the authenticated user ID
+- the user message
+- the AI response
+- timestamps
+
+The chat history can be loaded later for the same user.
+
+### 5. Real-time updates
+
+The backend exposes Socket.IO events so the frontend can receive the AI response as soon as it is finished. The frontend joins a user-specific room and listens for the event before updating the chat UI.
+
+## How the system works end-to-end
+
+### A. User signs in or signs up
+
+1. The frontend sends credentials to the backend auth route.
+2. The backend validates the input and hashes the password with bcrypt.
+3. A JWT is created and placed into an HTTP-only cookie.
+4. The frontend stores the authenticated user in Zustand state.
+
+### B. User opens the chat screen
+
+1. The app checks if the user is authenticated.
+2. If yes, the frontend connects to the Socket.IO server and loads chat history for that user.
+3. The chat screen displays the previously stored conversations.
+
+### C. User sends a message
+
+1. The frontend collects the prompt from the textarea.
+2. It appends a temporary pending message to the local conversation state.
+3. It sends the message to the backend endpoint /api/chat/add_chat.
+4. The backend authenticates the request, validates the query, and creates a UUID-based thread ID.
+5. The backend calls the Python AI service at http://localhost:8000/query.
+6. The AI service processes the prompt and returns a response string.
+7. The backend saves the exchange to MongoDB.
+8. The backend emits a Socket.IO event to the user’s room.
+9. The frontend receives that event and replaces the temporary loading state with the real AI message.
+
+### D. AI service processing flow
+
+Inside the Python service:
+
+1. The incoming payload is parsed into query, model name, and thread ID.
+2. A language classifier checks if the request is related to Python.
+3. The router determines the best route:
+   - answer: respond directly if the question is simple and no external knowledge is required
+   - rag: look into the knowledge base first
+   - end: stop early for unsupported or non-Python requests
+4. If RAG is selected, the service embeds the user query and queries Pinecone for similar context chunks.
+5. If the RAG result is judged insufficient, the service falls back to Tavily web search.
+6. The final answer is generated by a Groq model and returned to the backend.
+
+## Project structure
+
+```text
 code-review-website/
-│
-├── Frontend/                    # React + Vite Frontend Application
+├── Backend/
 │   ├── src/
-│   │   ├── components/         # Reusable UI components
-│   │   ├── pages/              # Page components
-│   │   ├── store/              # State management
-│   │   ├── lib/                # Utilities and API clients
-│   │   ├── App.jsx
-│   │   ├── main.jsx
-│   │   └── index.css
-│   ├── public/                 # Static assets
-│   ├── vite.config.js
-│   ├── tailwind.config.js
-│   ├── tsconfig.json
-│   └── package.json
-│
-├── Backend/                     # Node.js Express Backend
-│   ├── src/
-│   │   ├── controller/         # Request handlers
+│   │   ├── controller/
 │   │   │   ├── auth.controller.js
 │   │   │   └── chat.controller.js
-│   │   ├── models/             # Database schemas
-│   │   │   ├── user.model.js
-│   │   │   └── chat.model.js
-│   │   ├── routes/             # API routes
-│   │   │   ├── auth.route.js
-│   │   │   └── chat.route.js
-│   │   ├── middleware/         # Express middleware
-│   │   │   └── auth.middleware.js
-│   │   ├── lib/                # Helpers and utilities
+│   │   ├── lib/
 │   │   │   ├── db.js
 │   │   │   └── util.js
-│   │   └── index.js            # Server entry point
+│   │   ├── middleware/
+│   │   │   └── auth.middleware.js
+│   │   ├── models/
+│   │   │   ├── chat.model.js
+│   │   │   └── user.model.js
+│   │   ├── routes/
+│   │   │   ├── auth.route.js
+│   │   │   └── chat.route.js
+│   │   └── index.js
 │   ├── package.json
 │   └── README.md
-│
-├── ai/                         # Python AI Service
-│   ├── main.py                # FastAPI application
-│   ├── python/                # Python modules
+├── Frontend/
+│   ├── src/
+│   │   ├── component/
+│   │   ├── components/
+│   │   ├── lib/
+│   │   ├── pages/
+│   │   ├── store/
+│   │   ├── App.jsx
+│   │   └── main.jsx
+│   ├── package.json
+│   └── vite.config.js
+├── ai/
+│   ├── main.py
 │   ├── pyproject.toml
 │   ├── requirement.txt
 │   └── README.md
-│
-└── README.md                   # This file
+└── README.md
 ```
 
-## ◆ Tech Stack
+## Technology stack
 
 ### Frontend
-- **Framework:** React 18+
-- **Build Tool:** Vite
-- **Language:** TypeScript/JavaScript
-- **Styling:** Tailwind CSS
-- **State Management:** Zustand
-- **HTTP Client:** Axios
-- **Real-Time:** Socket.io Client
+
+- React
+- Vite
+- Tailwind CSS
+- Zustand for state management
+- React Router for page navigation
+- Axios for API calls
+- Socket.IO client for live updates
+- React Hot Toast for notifications
 
 ### Backend
-- **Runtime:** Node.js
-- **Framework:** Express.js
-- **Database:** MongoDB
-- **Real-Time:** Socket.io
-- **Authentication:** JWT (jsonwebtoken)
-- **HTTP Client:** Axios
-- **ID Generation:** UUID
 
-### AI Service
-- **Framework:** FastAPI / Flask
-- **Language:** Python 3.8+
-- **LLM Integration:** OpenAI API / Hugging Face
-- **Dependencies:** Listed in `requirement.txt`
+- Node.js
+- Express.js
+- MongoDB with Mongoose
+- Socket.IO
+- JWT authentication with jsonwebtoken
+- bcryptjs for password hashing
+- cookie-parser for auth cookies
+- Axios for calling the Python AI service
+- UUID for per-request thread IDs
 
-## ◇ Installation
+### AI service
 
-### Prerequisites
-- **Node.js** v16 or higher
-- **Python** 3.8 or higher
-- **MongoDB** (local or cloud)
-- **Git**
+- Python 3.13+ (as defined in the project config)
+- FastAPI
+- LangGraph
+- LangChain
+- Groq LLM integration
+- Hugging Face embeddings
+- Pinecone vector index
+- Tavily search integration
+- Python dotenv and Uvicorn
 
-### Clone Repository
-```bash
-git clone https://github.com/yourusername/code-review-website.git
-cd code-review-website
+## Prerequisites
+
+Make sure these are installed before running the project:
+
+- Node.js 18+ or newer
+- npm
+- Python 3.10+ (3.13+ is preferred based on the config)
+- MongoDB running locally or a MongoDB Atlas connection string
+- A Groq API key
+- A Pinecone API key and environment
+- A Tavily API key if you want internet-backed search to work
+
+## Environment setup
+
+Create separate environment files for each part of the app.
+
+### Backend environment
+
+Create a file named .env inside Backend:
+
+```env
+PORT=5000
+NODE_ENV=development
+MONGODB_URL=mongodb://127.0.0.1:27017/hatmind
+JWT_SECRET=replace_with_a_long_random_secret
+AI_SERVICE_URL=http://localhost:8000
 ```
 
-### Install Frontend Dependencies
+Important note: the backend currently reads MONGODB_URL, not MONGODB_URI.
+
+### Frontend environment
+
+The frontend currently uses the base URL in [Frontend/src/lib/axios.js](Frontend/src/lib/axios.js). In development it points to http://localhost:5000/api. No extra .env file is required unless you want to customize the endpoint.
+
+### AI service environment
+
+Create a file named .env inside ai:
+
+```env
+GROQ_API_KEY=your_groq_api_key
+LANGCHAIN_API_KEY=your_langsmith_api_key
+PINECONE_API_KEY=your_pinecone_key
+PINECONE_ENV=your_pinecone_environment
+TAVILY_API_KEY=your_tavily_key
+```
+
+The Python service also expects the Pinecone index named kb-index to exist or to be created automatically by the code.
+
+## Installation
+
+### 1. Clone the repository
+
+```bash
+git clone <your-repository-url>
+cd "code review website"
+```
+
+### 2. Install frontend dependencies
+
 ```bash
 cd Frontend
 npm install
 ```
 
-### Install Backend Dependencies
+### 3. Install backend dependencies
+
 ```bash
 cd ../Backend
 npm install
 ```
 
-### Install AI Service Dependencies
+### 4. Install Python dependencies
+
+From the ai folder, use either pip or uv:
+
 ```bash
 cd ../ai
 pip install -r requirement.txt
 ```
 
-## ◆ Configuration
+Or if you are using the project config:
 
-### Environment Variables
-
-#### Backend (.env)
-```env
-# Server
-PORT=5000
-NODE_ENV=development
-
-# Database
-MONGODB_URI=mongodb://localhost:27017/codereview
-
-# Authentication
-JWT_SECRET=your_super_secret_jwt_key_here
-JWT_EXPIRATION=7d
-
-# AI Service
-AI_SERVICE_URL=http://localhost:8000
-
-# CORS
-CORS_ORIGIN=http://localhost:5173
+```bash
+uv sync
 ```
 
-#### Frontend (.env)
-```env
-VITE_API_URL=http://localhost:5000
-VITE_WS_URL=ws://localhost:5000
-```
-
-#### AI Service (.env)
-```env
-OPENAI_API_KEY=your_openai_api_key
-OPENAI_MODEL=gpt-4
-PORT=8000
-```
-
-## ► Running the Project
+## Running the app locally
 
 ### Start MongoDB
-```bash
-# Using Docker
-docker run -d -p 27017:27017 --name mongodb mongo:latest
 
-# Or if installed locally
+If you are running MongoDB locally:
+
+```bash
 mongod
 ```
 
-### Start AI Service
+If you use Docker instead:
+
 ```bash
-cd ai
-python main.py
+docker run -d -p 27017:27017 --name mongodb mongo:latest
 ```
 
-The AI service will be available at `http://localhost:8000`
+### Start the AI service
 
-### Start Backend Server
+```bash
+cd ai
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
+```
+
+The API endpoint used by the backend is:
+
+```text
+POST http://localhost:8000/query
+```
+
+### Start the backend
+
 ```bash
 cd Backend
-npm start
-# or for development with auto-reload
 npm run dev
 ```
 
-The backend will be available at `http://localhost:5000`
+The backend will listen on port 5000.
 
-### Start Frontend Development Server
+### Start the frontend
+
 ```bash
 cd Frontend
 npm run dev
 ```
 
-The frontend will be available at `http://localhost:5173`
+Open the frontend at:
 
-### Access the Application
-Open your browser and navigate to:
-```
+```text
 http://localhost:5173
 ```
 
-## ◆ API Documentation
+## API reference
 
-### Authentication Endpoints
+### Authentication
 
-#### Register User
-```
-POST /api/auth/signup
-Content-Type: application/json
+#### POST /api/auth/signup
 
+Creates a new user account.
+
+Request body:
+
+```json
 {
-  "username": "john_doe",
-  "email": "john@example.com",
-  "password": "securepassword123"
-}
-
-Response: 200 OK
-{
-  "token": "jwt_token_here",
-  "user": {
-    "_id": "...",
-    "username": "john_doe",
-    "email": "john@example.com"
-  }
+  "fullName": "Jane Doe",
+  "email": "jane@example.com",
+  "password": "password123"
 }
 ```
 
-#### Login User
-```
-POST /api/auth/login
-Content-Type: application/json
+Response:
 
+```json
 {
-  "email": "john@example.com",
-  "password": "securepassword123"
-}
-
-Response: 200 OK
-{
-  "token": "jwt_token_here",
-  "user": { ... }
+  "_id": "...",
+  "fullName": "Jane Doe",
+  "email": "jane@example.com",
+  "password": "hashed_password"
 }
 ```
 
-### Chat Endpoints
+#### POST /api/auth/login
 
-#### Add Chat Message
-```
-POST /api/chat/add
-Authorization: Bearer {token}
-Content-Type: application/json
+Authenticates an existing user.
 
+Request body:
+
+```json
 {
-  "query": "Review this code for security issues",
-  "model_name": "gpt-4"
-}
-
-Response: 200 OK
-{
-  "response": "AI review response with detailed feedback..."
+  "email": "jane@example.com",
+  "password": "password123"
 }
 ```
 
-#### Get Chat History
-```
-GET /api/chat/history
-Authorization: Bearer {token}
+Response:
 
-Response: 200 OK
-[
-  {
-    "_id": "...",
-    "user_message": "Review this code...",
-    "AI_message": "AI response...",
-    "createdAt": "2026-01-31T..."
-  }
-]
+```json
+{
+  "_id": "...",
+  "fullName": "Jane Doe",
+  "email": "jane@example.com",
+  "password": "hashed_password"
+}
 ```
 
-## ◆ Security Features
+#### POST /api/auth/logout
 
-- [✓] JWT-based authentication
-- [✓] Password hashing with bcrypt
-- [✓] CORS protection
-- [✓] Input validation and sanitization
-- [✓] Rate limiting (recommended)
-- [✓] Secure session management
-- [✓] Environment variable protection
+Clears the JWT cookie.
 
-## ◆ Contributing
+#### GET /api/auth/check
 
-We welcome contributions! Here's how:
+Checks whether the current user is authenticated. Requires a valid JWT cookie.
 
-1. **Fork the repository**
-   ```bash
-   git clone https://github.com/yourusername/code-review-website.git
-   ```
+### Chat
 
-2. **Create a feature branch**
-   ```bash
-   git checkout -b feature/amazing-feature
-   ```
+#### POST /api/chat/add_chat
 
-3. **Commit your changes**
-   ```bash
-   git commit -m 'Add amazing feature'
-   ```
+Sends a chat message and gets an AI response.
 
-4. **Push to the branch**
-   ```bash
-   git push origin feature/amazing-feature
-   ```
+Headers:
 
-5. **Open a Pull Request**
+```http
+Cookie: jwt=<token>
+```
 
-## ▪ Code Style
+Request body:
 
-- Use ESLint for JavaScript/TypeScript
-- Follow PEP 8 for Python code
-- Use meaningful variable and function names
-- Add comments for complex logic
-- Write unit tests for new features
+```json
+{
+  "query": "Please review this Python code for best practices",
+  "model_name": "llama-3.1-8b-instant"
+}
+```
 
-## ◆ Known Issues & Roadmap
+Behavior:
 
-### Planned Features
+- validates that the user query exists
+- creates a new UUID-based thread ID
+- sends the request to the AI service
+- stores the result in MongoDB
+- emits a Socket.IO event to the current user
+
+#### GET /api/chat/history
+
+Returns the chat history for the authenticated user.
+
+## Important implementation details
+
+### Authentication implementation
+
+- Passwords are hashed using bcrypt before storage.
+- JWTs are issued by the backend and stored in an HTTP-only cookie.
+- The protected route middleware reads the cookie, verifies it, and attaches the user to req.user.
+
+### Chat persistence model
+
+Each chat record contains:
+
+- userId: the MongoDB ObjectId of the authenticated user
+- user_message: the prompt entered by the user
+- AI_message: the generated response
+- timestamps added by Mongoose
+
+### Socket.IO behavior
+
+The backend creates a Socket.IO server and joins each authenticated user into their own room using the user ID. The frontend connects to the server and listens for the aiMessage event to update the conversation in real time.
+
+### AI routing behavior
+
+The Python service is not a simple single-prompt LLM wrapper. It uses a small reasoning pipeline:
+
+- language check node
+- router node
+- RAG lookup node
+- web search node
+- answer node
+
+This design allows the assistant to decide when to use context retrieval, external search, or direct answering.
+
+### Knowledge base and search
+
+The app currently uses:
+
+- a Pinecone index named kb-index
+- embeddings from Hugging Face
+- Tavily search for external information
+
+If the knowledge-base lookup is insufficient, the assistant falls back to the web.
+
+### Current scope
+
+The current implementation is focused on Python-related questions. If the user asks about a non-Python topic, the assistant is designed to respond that it cannot answer that class of question.
+
+## Troubleshooting
+
+### Backend cannot connect to MongoDB
+
+Check that:
+
+- MongoDB is running
+- the MONGODB_URL in Backend/.env is correct
+- your local MongoDB instance allows connections from localhost
+
+### AI service returns errors
+
+Check that:
+
+- the Python dependencies are installed
+- the .env file inside ai contains valid API keys
+- the Pinecone index exists or can be created
+- the Groq and Tavily credentials are valid
+
+### Frontend cannot reach the backend
+
+Check that:
+
+- the backend is running on port 5000
+- CORS is configured for http://localhost:5173
+- the frontend is using the correct backend URL in [Frontend/src/lib/axios.js](Frontend/src/lib/axios.js)
+
+### Socket.IO does not update messages
+
+Check that:
+
+- the frontend is connected to the backend Socket.IO server
+- the user has joined the correct room
+- the backend emitted the aiMessage event after saving the chat message
+
+## Contribution
+
+If you want to improve the project:
+
+1. create a feature branch
+2. make your changes
+3. test them locally
+4. open a pull request with a clear description
+
+This project is best improved by keeping the frontend, backend, and AI service behavior aligned, especially when changing the request/response contract between them.
 - [ ] Support for more AI models
 - [ ] Code diff visualization
 - [ ] Team collaboration features

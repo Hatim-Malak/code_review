@@ -8,10 +8,10 @@ export default {
   theme: {
   	extend: {
   		colors: {
-  			dark: '#222831',
-  			grayish: '#31363F',
-  			tealish: '#76ABAE',
-  			light: '#EEEEEE',
+  			cream: '#FBF5DD',
+  			creamDark: '#E7E1B1',
+  			greenLight: '#306D29',
+  			greenDark: '#0D530E',
   			background: 'hsl(var(--background))',
   			foreground: 'hsl(var(--foreground))',
   			card: {

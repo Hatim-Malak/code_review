@@ -4,6 +4,7 @@ import HomePage from './pages/HomePage.jsx'
 import SignUpPage from './pages/SignUpPage.jsx'
 import LoginPage from './pages/LoginPage.jsx'
 import ChatPage from './pages/ChatPage.jsx'
+import AboutPage from './pages/AboutPage.jsx'
 import { Toaster } from 'react-hot-toast'
 import { useAuth } from './store/useAuthStore.js'
 import { Loader } from 'lucide-react'
@@ -26,6 +27,7 @@ const App = () => {
     <div className='w-full h-full'>
       <Routes>
         <Route path='/' element={<HomePage/>}/>
+        <Route path='/about' element={<AboutPage/>}/>
         <Route path='/login' element={!authUser?<LoginPage/>:<Navigate to='/chat'/>}/>
         <Route path='/signup' element={!authUser?<SignUpPage/>:<Navigate to='/chat'/>}/>
         <Route path='/chat' element={authUser?<ChatPage/>:<Navigate to='/login'/>}/>

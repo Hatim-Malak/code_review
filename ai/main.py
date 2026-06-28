@@ -27,22 +27,19 @@ PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 PINECONE_ENV = os.getenv("PINECONE_ENV")
 INDEX_NAME = "kb-index"
 
-# Create Pinecone client
 pc = Pinecone(api_key=PINECONE_API_KEY)
 
-# Create index if not exist
 if INDEX_NAME not in pc.list_indexes().names():
     pc.create_index(
         name=INDEX_NAME,
-        dimension=384,  # match your embedding size
+        dimension=384,
         metric='cosine',
         spec=ServerlessSpec(cloud='aws', region='us-east-1')
     )
 
-# Connect to the index
 index = pc.Index(INDEX_NAME)
 
-# CORS setup
+
 origins = [
     "http://localhost:5000",
 ]
@@ -54,7 +51,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Environment setup for other APIs
+
 os.environ["GROQ_API_KEY"] = os.getenv("GROQ_API_KEY")
 os.environ["LANGSMITH_API_KEY"] = os.getenv("LANGCHAIN_API_KEY")
 os.environ["LANGSMITH_TRACING"] = "true"

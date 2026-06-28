@@ -1,10 +1,11 @@
 import React from "react";
-import GradientBlinds from "../component/GradientBlinds.jsx";
-import { Loader2 } from "lucide-react";
-import { useState, useMemo, useCallback } from "react";
+import { Loader2, Code2, Sparkles, TerminalSquare } from "lucide-react";
+import { useState, useCallback, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../store/useAuthStore.js";
 import toast from "react-hot-toast";
+
+import AuthVisual from "../components/AuthVisual.jsx";
 
 const LoginPage = () => {
   const { signIn, isSigningIn } = useAuth();
@@ -29,85 +30,80 @@ const LoginPage = () => {
     [form, validateForm, signIn]
   );
 
-  const layout = useMemo(() => {
-    return (
-      <div className="w-full h-screen bg-black backdrop-blur-lg relative overflow-hidden">
-        <div className="absolute inset-0 z-0 opacity-100 transition-opacity duration-1000">
-          <GradientBlinds
-            gradientColors={["#FF9FFC", "#5227FF"]}
-            angle={0}
-            noise={0.3}
-            blindCount={12}
-            blindMinWidth={50}
-            spotlightRadius={0.5}
-            spotlightSoftness={1}
-            spotlightOpacity={1}
-            mouseDampening={0.15}
-            distortAmount={0}
-            shineDirection="left"
-            mixBlendMode="lighten"
-          />
-        </div>
-      </div>
-    );
-  }, []);
-
   return (
-    <div className="w-full backdrop-blur-lg h-screen bg-black relative">
-      {layout}
-      <div className="w-full flex h-screen absolute top-0 right-0 justify-center items-center">
-        <div className="h-[60%] lg:w-[25%] w-[95%] flex flex-col justify-center gap-5 items-center rounded-2xl bg-light">
-          <h1 className="text-dark text-5xl font-bold mb-5">Login</h1>
-          <div className="border-2 border-dark w-[70%] rounded-full flex ">
+    <div className="w-full min-h-screen bg-cream flex overflow-hidden selection:bg-greenDark selection:text-cream">
+      {/* Left Panel - Branding & Immersive Visuals */}
+      <AuthVisual />
+
+      {/* Right Panel - Form */}
+      <div className="w-full lg:w-1/2 flex justify-center items-center p-6 sm:p-12 relative">
+        <Link to="/" className="absolute top-8 left-8 text-greenDark font-bold hover:text-greenLight transition-colors flex items-center gap-2">
+          ← Back to Home
+        </Link>
+        
+        <div className="w-full max-w-md flex flex-col gap-8 bg-cream/80 backdrop-blur-sm p-8 sm:p-10 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-greenDark/10">
+          <div className="flex flex-col gap-2">
+            <h2 className="text-3xl font-black text-greenDark tracking-tight">Login</h2>
+            <p className="text-greenDark/70 font-medium">Enter your credentials to access your account.</p>
+          </div>
+          
+          <div className="border border-greenDark/20 w-full rounded-xl flex overflow-hidden bg-white/50 p-1">
             <Link
-              to="/"
-              className="w-[50%] text-xl font-bold text-light bg-dark rounded-l-full text-center p-2"
+              to="/login"
+              className="w-1/2 text-sm uppercase tracking-wider font-bold text-cream bg-greenDark text-center py-3 rounded-lg shadow-sm transition-all"
             >
               Login
             </Link>
             <Link
               to="/signup"
-              className="w-[50%] text-xl font-bold text-dark bg-light text-center rounded-r-full p-2"
+              className="w-1/2 text-sm uppercase tracking-wider font-bold text-greenDark hover:bg-greenDark/5 text-center py-3 rounded-lg transition-all"
             >
               Sign Up
             </Link>
           </div>
+
           <form
-            className="flex flex-col gap-3 items-center w-full"
+            className="flex flex-col gap-5 w-full mt-2"
             onSubmit={handleSubmit}
           >
-            <div className="flex flex-col gap-2 w-[70%]">
-              <h1 className="text-xl text-dark font-bold ml-4">Email</h1>
-              <input
-                value={form.email}
-                onChange={(e) => setForm({ ...form, email: e.target.value })}
-                type="text"
-                className="rounded-full px-4 py-3 focus:bg-grayish bg-dark placeholder:text-light text-light placeholder:text-lg text-lg placeholder:font-medium font-medium"
-                placeholder="Ex:-xyz@gmail.com"
-              />
+            <div className="flex flex-col gap-2">
+              <label className="text-xs text-greenDark font-bold uppercase tracking-widest pl-2">Email Address</label>
+              <div className="relative group">
+                <input
+                  value={form.email}
+                  onChange={(e) => setForm({ ...form, email: e.target.value })}
+                  type="email"
+                  className="w-full rounded-xl px-5 py-4 border-2 border-greenDark/10 bg-white/50 focus:bg-white focus:border-greenLight focus:ring-4 focus:ring-greenLight/10 outline-none placeholder:text-greenDark/30 text-greenDark font-medium transition-all"
+                  placeholder="hello@example.com"
+                />
+              </div>
             </div>
-            <div className="flex flex-col gap-2 w-[70%]">
-              <h1 className="text-xl text-dark font-bold ml-4">Password</h1>
-              <input
-                value={form.password}
-                onChange={(e) => setForm({ ...form, password: e.target.value })}
-                type="text"
-                className="rounded-full px-4 py-3 focus:bg-grayish bg-dark placeholder:text-light text-light placeholder:text-lg text-lg placeholder:font-medium font-medium"
-                placeholder="Type your password"
-              />
+            
+            <div className="flex flex-col gap-2">
+              <label className="text-xs text-greenDark font-bold uppercase tracking-widest pl-2">Password</label>
+              <div className="relative group">
+                <input
+                  value={form.password}
+                  onChange={(e) => setForm({ ...form, password: e.target.value })}
+                  type="password"
+                  className="w-full rounded-xl px-5 py-4 border-2 border-greenDark/10 bg-white/50 focus:bg-white focus:border-greenLight focus:ring-4 focus:ring-greenLight/10 outline-none placeholder:text-greenDark/30 text-greenDark font-medium transition-all"
+                  placeholder="••••••••"
+                />
+              </div>
             </div>
+            
             <button
               disabled={isSigningIn}
               type="submit"
-              className="w-[70%] my-4 rounded-lg bg-dark hover:bg-grayish transition-colors text-2xl text-light px-3 flex justify-center items-center ga[-2] py-4 font-bold"
+              className="w-full mt-6 rounded-xl bg-greenLight hover:bg-greenDark disabled:bg-greenDark/50 transition-all duration-300 text-lg text-cream py-4 flex justify-center items-center gap-2 font-bold shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
             >
               {isSigningIn ? (
                 <>
-                  <Loader2 className="w-5 h-5 animate-spin text-white" />
-                  <span>Loading...</span>
+                  <Loader2 className="w-5 h-5 animate-spin text-cream" />
+                  <span>Authenticating...</span>
                 </>
               ) : (
-                "Sign Up"
+                "Log In"
               )}
             </button>
           </form>

@@ -315,7 +315,7 @@ export function AnimatedCodeBlock({
   const [isPlaying, setIsPlaying] = useState(autoPlay);
   const [currentPosition, setCurrentPosition] = useState(0);
   const [copied, setCopied] = useState(false);
-  const [completed, setCompleted] = useState(false);
+  const [completed, setCompleted] = useState(!autoPlay);
   const [isPaused, setIsPaused] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showTooltip, setShowTooltip] = useState("");
