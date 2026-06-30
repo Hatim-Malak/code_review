@@ -1,12 +1,12 @@
 import Chat from "../models/chat.model.js";
-import {v4 as uuidv4} from "uuid"
 import axios from "axios"
+import {v4 as uuid4} from "uuid"
 
 export const addChat =async(req,res)=>{
     try {
         console.log("hello")
         const userId  = req.user._id
-        const { query,model_name } = req.body
+        const { query,model_name,converId } = req.body
 
     if(!query){
         return res.status(400).json({message:"user query is required"})
@@ -14,20 +14,27 @@ export const addChat =async(req,res)=>{
     if(!model_name){
         return res.status(400).json({message:"model_name is required"})
     }
-    const thread_id = uuidv4();
+    if(!converId){
+        converId = uuid4()
+    }
+    const context = Chat.find({userId,conversationId:converId}).limit(7)
     const response = await axios.post("http://localhost:8000/query", {
         query,
         model_name,
-        thread_id
+        context
     });
+
     if(!response.data){
         return res.status(500).json({message:"Internal server error"})
     }
+
     const chat = new Chat({
         userId,
+        conversationId:converId,
         user_message:query,
         AI_message:response.data.response
     })
+
     await chat.save()
 
     const io = req.app.locals.io;
@@ -43,10 +50,11 @@ export const addChat =async(req,res)=>{
 export const getHistory = async(req,res) =>{
     try {
         const userId = req.user._id
+        const converId = req.body;
         if(!userId){
             return res.status(400).json({message:"user id is required"})
         }
-        const all_chat = await Chat.find({ userId })
+        const all_chat = await Chat.find({ userId,conversationId:converId })
             .select("-userId -createdAt -updatedAt -__v")
             .sort({ createdAt: 1 });
         

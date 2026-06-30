@@ -1,17 +1,14 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import os
-from langgraph.checkpoint.memory import MemorySaver
 from pydantic import BaseModel,Field
 from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_community.document_loaders import PyPDFLoader, Docx2txtLoader
 from dotenv import load_dotenv
 from hashlib import sha256
 from langgraph.graph import END,START,StateGraph
 from typing import List,Literal,TypedDict
 from langchain_groq import ChatGroq
 from langchain_tavily import TavilySearch
-from langchain_core.documents import Document
 from langchain_core.messages import BaseMessage,HumanMessage,AIMessage,SystemMessage
 from pinecone import Pinecone, ServerlessSpec
 from langchain_core.tools import tool
@@ -144,7 +141,6 @@ def aiBot(data:AIQuery):
         verdict:checkLanguage = language_checking_llm.invoke(messages)
 
         return {
-            **state,
             "isPython":verdict.isPython,
             "route":"answer" 
         }
@@ -170,7 +166,6 @@ def aiBot(data:AIQuery):
         out = {'messages':state['messages'] ,"route":result.route}
         if not state.get("isPython", True):
             return {
-                **state,
                 "messages":state["messages"] + [AIMessage(content=result.reply or "sorry i am not capable enough to answer any other coding langauage other than python")],
                 "route":"end"
 
@@ -195,7 +190,6 @@ def aiBot(data:AIQuery):
         verdict:RagJudge = judge_llm.invoke(judge_message)
 
         return{
-            **state,
             "rag":chunks,
             "route":"answer" if verdict.sufficient else "web" 
         }
@@ -203,7 +197,11 @@ def aiBot(data:AIQuery):
     def web_node(state:AgentState)->AgentState:
         query = next((m.content for m in reversed(state["messages"]) if isinstance(m,HumanMessage)),"")
         snippet = web_search_tool(query)
-        return {**state,"web":snippet,"route":"answer"}
+        return {"web":snippet,"route":"answer"}
+    
+    def summarizeHistory(state:AgentState)->AgentState:
+        try:
+            
     
     def answer_node(state:AgentState) ->AgentState:
         user_q = next((m.content for m in reversed(state["messages"]) if isinstance(m,HumanMessage)),"")
@@ -233,7 +231,6 @@ def aiBot(data:AIQuery):
         ans = answer_llm.invoke([HumanMessage(content=prompt)]).content
 
         return{
-            **state,
             "messages":state['messages']+[AIMessage(content=ans)]
         }
     def from_router(state:AgentState) ->Literal["rag","answer","end"]:
@@ -257,7 +254,6 @@ def aiBot(data:AIQuery):
     g.add_edge("web_search","answer")
     g.add_edge("answer",END)
 
-    agent = g.compile(checkpointer=MemorySaver())
-    config = {"configurable": {"thread_id": str(data.thread_id)}}
-    result = agent.invoke({"messages": [HumanMessage(content=data.query)]}, config)
+    agent = g.compile()
+    result = agent.invoke({"messages": [HumanMessage(content=data.query)]})
     return {"response": result["messages"][-1].content}
