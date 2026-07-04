@@ -6,12 +6,16 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from dotenv import load_dotenv
 from hashlib import sha256
 from langgraph.graph import END,START,StateGraph
-from typing import List,Literal,TypedDict
+from typing import List,Literal
 from langchain_groq import ChatGroq
 from langchain_tavily import TavilySearch
 from langchain_core.messages import BaseMessage,HumanMessage,AIMessage,SystemMessage
 from pinecone import Pinecone, ServerlessSpec
 from langchain_core.tools import tool
+from langchain_core.prompts import ChatPromptTemplate
+from typing_extensions import Annotated,TypedDict
+from langchain_core.output_parsers import StrOutputParser
+from langgraph.graph.message import add_messages
 
 from tqdm import tqdm
 import sys
@@ -114,11 +118,13 @@ def aiBot(data:AIQuery):
     router_llm = ChatGroq(model=data.model_name).with_structured_output(RouteDecision)
     judge_llm = ChatGroq(model=data.model_name).with_structured_output(RagJudge)
     answer_llm = ChatGroq(model=data.model_name)
+    llm = ChatGroq(model= "llama-3.1-8b-instant")
     language_checking_llm = ChatGroq(model=data.model_name).with_structured_output(checkLanguage)
     
     class AgentState(TypedDict,total=False):
-        messages:List[BaseMessage]
+        messages:Annotated[List[BaseMessage],add_messages]
         route:Literal["rag","answer","end"]
+        conversational_summary:str
         rag:str
         web:str
         isPython:bool
@@ -201,7 +207,34 @@ def aiBot(data:AIQuery):
     
     def summarizeHistory(state:AgentState)->AgentState:
         try:
+            prompt = ""
+            if(state["messages"][-1] < 400000 ):
+                prompt = [
+                    ("system", """You are an expert technical archivist. Analyze the provided conversation and generate a highly structured summary. 
+                    
+                Extract the primary problem, the proposed solution, and any key technical constraints discussed. Present the output in a concise format using bullet points. Eliminate all conversational filler, examples, and pleasantries to save space."""),
+                    ("human", "Please summarize the following conversation:\n\n{conversation}")
+                ]
             
+            else:
+                prompt = [
+                    ("system", """Execute maximum data compression on the provided text to prevent context overflow. 
+                    
+                Strip away all examples, explanations, code snippets, and conversational context. Output ONLY the final architectural conclusions and explicit decisions made. The final output must be an ultra-dense, continuous paragraph of exactly 4 sentences or fewer."""),
+                    ("human", "Compress the following text:\n\n{conversation}")
+                ]
+            
+            summary_prompt = ChatPromptTemplate.from_messages(prompt)
+            formatted_message = summary_prompt.format_messages(conversation = data.context)
+            
+            summarize_chain = formatted_message | llm | StrOutputParser()
+            
+            summarize_conversation = summarize_chain.invoke()
+            
+            return {"conversational_summary":summarize_conversation} 
+        except Exception as e:
+            print(f"there is something wrong in smarizeHistory:{e}")
+            return {"conversational_summary":""} 
     
     def answer_node(state:AgentState) ->AgentState:
         user_q = next((m.content for m in reversed(state["messages"]) if isinstance(m,HumanMessage)),"")
