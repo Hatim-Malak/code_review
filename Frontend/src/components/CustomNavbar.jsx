@@ -36,9 +36,11 @@ const CustomNavbar = ({ items, logo, className = "", onSidebarToggle }) => {
           )}
           {/* Logo */}
           <Link to="/" className="flex items-center gap-2 group">
-            <div className="w-10 h-10 rounded-xl bg-greenDark flex justify-center items-center overflow-hidden transition-transform group-hover:scale-105 shadow-md">
-              <img src={logo} alt="Logo" className="w-full h-full object-cover" />
-            </div>
+            <img 
+              src={logo} 
+              alt="Logo" 
+              className="h-10 w-auto rounded-xl object-contain transition-transform group-hover:scale-105 shadow-md" 
+            />
             <span className="text-2xl font-black tracking-tighter text-greenDark">
               HatMind
             </span>

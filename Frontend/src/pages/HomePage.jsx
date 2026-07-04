@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from "react";
 import CustomNavbar from "../components/CustomNavbar.jsx";
-import TextType from "../component/TextType.jsx";
+import TextType from "../components/TextType.jsx";
 import { Link } from "react-router-dom";
 import { ExternalLink, Code2, Sparkles, TerminalSquare } from "lucide-react";
 import { useAuth } from "../store/useAuthStore.js";
+import { Helmet } from "react-helmet-async";
 
 const FloatingElement = ({ children, delay, duration, className }) => (
   <div
@@ -61,6 +62,10 @@ const HomePage = () => {
 
   return (
     <div className="w-full min-h-screen bg-cream relative flex flex-col overflow-hidden selection:bg-greenDark selection:text-cream">
+      <Helmet>
+        <title>HatMind - AI Powered Code Review & Optimization</title>
+        <meta name="description" content="HatMind is your intelligent AI pair programmer. Get instant code reviews, optimize performance, and find bugs in your Python scripts effortlessly." />
+      </Helmet>
       {/* Immersive Floating Background Elements */}
       <FloatingElement delay={0} duration={8} className="top-[20%] left-[10%] text-greenLight">
         <Code2 size={120} />
@@ -75,7 +80,7 @@ const HomePage = () => {
         <div className="font-mono text-9xl font-bold">{"{}"}</div>
       </FloatingElement>
 
-      <CustomNavbar logo="./ai.png" items={navItems} />
+      <CustomNavbar logo="./HatMind.jpg" items={navItems} />
       
       <div className={`flex-1 w-full flex flex-col justify-center items-center px-4 relative z-10 transition-all duration-1000 transform ${fadeIn ? "opacity-100 translate-y-0" : "opacity-0 translate-y-10"}`}>
         <div className="max-w-5xl w-full flex flex-col justify-center gap-10 items-center mt-20">

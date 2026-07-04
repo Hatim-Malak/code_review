@@ -3,6 +3,7 @@ import CustomNavbar from "../components/CustomNavbar.jsx";
 import { useAuth } from "../store/useAuthStore.js";
 import { Link } from "react-router-dom";
 import { Code2, Zap, ShieldCheck, HeartHandshake, Bot, Terminal } from "lucide-react";
+import { Helmet } from "react-helmet-async";
 
 const FloatingElement = ({ children, delay, duration, className }) => (
   <div
@@ -63,7 +64,11 @@ const AboutPage = () => {
 
   return (
     <div className="w-full min-h-screen bg-cream flex flex-col relative selection:bg-greenDark selection:text-cream">
-      <CustomNavbar logo="./ai.png" items={navItems} />
+      <Helmet>
+        <title>About Us | HatMind</title>
+        <meta name="description" content="Learn about the mission and technology behind HatMind. We are building the future of automated code review to help developers write flawless code." />
+      </Helmet>
+      <CustomNavbar logo="./HatMind.jpg" items={navItems} />
 
       {/* Hero Section */}
       <div className="relative w-full pt-32 pb-20 overflow-hidden flex flex-col items-center border-b border-greenDark/10">

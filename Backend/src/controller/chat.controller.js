@@ -41,7 +41,7 @@ export const addChat = async (req, res) => {
         if (!response.data) {
             return res.status(500).json({ message: "Internal server error" });
         }
-
+        const ragSources = response.data.rag_sources;
         // Auto-generate title from first message (truncate to 50 chars)
         const title = isNewConversation 
             ? query.length > 50 ? query.slice(0, 50) + "..." : query
@@ -52,7 +52,8 @@ export const addChat = async (req, res) => {
             conversationId: converId,
             user_message: query,
             AI_message: response.data.response,
-            ...(title && { title })
+            ...(title && { title }),
+            rag_sources:ragSources
         });
 
         await chat.save();
@@ -60,13 +61,15 @@ export const addChat = async (req, res) => {
         const io = req.app.locals.io;
         io.to(userId.toString()).emit("aiMessage", { 
             userMessage: query, 
-            aiMessage: response.data.response 
+            aiMessage: response.data.response,
+            rag_sources: ragSources
         });
 
         res.status(200).json({ 
             response: response.data.response, 
             conversationId: converId,
-            ...(title && { title })
+            ...(title && { title }),
+            rag_sources: ragSources
         });
     } catch (error) {
         console.error("error in addChat controller:", error.message);

@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useAuth } from "../store/useAuthStore.js";
 import toast from "react-hot-toast";
 import { Loader2, ShieldCheck, Rocket, Zap } from "lucide-react";
+import { Helmet } from "react-helmet-async";
 
 import AuthVisual from "../components/AuthVisual.jsx";
 
@@ -32,6 +33,10 @@ const SignUpPage = () => {
 
   return (
     <div className="w-full min-h-screen bg-cream flex flex-row-reverse overflow-hidden selection:bg-greenDark selection:text-cream">
+      <Helmet>
+        <title>Sign Up | Join HatMind</title>
+        <meta name="description" content="Create a free HatMind account today and supercharge your development workflow with AI-powered code reviews." />
+      </Helmet>
       {/* Right Panel - Branding & Immersive Visuals */}
       <AuthVisual />
 

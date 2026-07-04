@@ -50,11 +50,13 @@ export const useChat = create((set, get) => ({
           chatsCopy[lastIndex] = {
             ...chatsCopy[lastIndex],
             AI_message: data.aiMessage,
+            rag_sources: data.rag_sources,
           };
         } else {
           chatsCopy.push({
             user_message: data.userMessage,
             AI_message: data.aiMessage,
+            rag_sources: data.rag_sources,
           });
         }
 
@@ -122,7 +124,7 @@ export const useChat = create((set, get) => ({
     try {
       set({ isSending: true });
       set({
-        chats: [...chats, { user_message: query, AI_message: null }],
+        chats: [...chats, { user_message: query, AI_message: null, rag_sources: null }],
       });
 
       const res = await axiosInstance.post("/chat/add_chat", {

@@ -6,7 +6,8 @@ import ChatSidebar from "../components/ChatSidebar.jsx";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { AnimatedCodeBlock } from "../components/animated-code-block";
-import { User, Bot, Send, Code, Sparkles, Zap, ShieldAlert, PanelLeftOpen } from "lucide-react";
+import { User, Bot, Send, Code, Sparkles, Zap, ShieldAlert, PanelLeftOpen, Globe } from "lucide-react";
+import { Helmet } from "react-helmet-async";
 
 const SuggestionCard = ({ icon: Icon, title, subtitle, onClick }) => (
   <button
@@ -94,7 +95,7 @@ const ChatPage = () => {
   const layout = useMemo(() => {
     return (
       <CustomNavbar
-        logo="./ai.png"
+        logo="./HatMind.jpg"
         items={navItems}
         className="lg:left-[300px]"
         onSidebarToggle={() => setSidebarOpen(true)}
@@ -104,6 +105,10 @@ const ChatPage = () => {
 
   return (
     <div className="bg-cream flex flex-col h-screen w-full relative">
+      <Helmet>
+        <title>Chat | HatMind AI</title>
+        <meta name="description" content="Chat with HatMind AI. Paste your code for an instant review, optimization suggestions, and bug detection." />
+      </Helmet>
       {layout}
       
       {/* Main layout with sidebar */}
@@ -127,9 +132,11 @@ const ChatPage = () => {
                 </div>
               ) : chats.length === 0 ? (
                 <div className="flex-1 flex flex-col justify-center items-center mt-10 lg:mt-20 animation-fade-in">
-                  <div className="w-20 h-20 bg-greenDark rounded-3xl flex justify-center items-center shadow-xl mb-6">
-                    <img src="./ai.png" alt="Logo" className="w-12 h-12 object-cover" />
-                  </div>
+                  <img 
+                    src="./HatMind.jpg" 
+                    alt="Logo" 
+                    className="h-24 w-auto rounded-3xl shadow-xl mb-6 object-contain" 
+                  />
                   <h2 className="text-3xl lg:text-4xl font-black text-greenDark mb-3 tracking-tight">How can I help you code today?</h2>
                   <p className="text-lg text-greenDark/70 mb-12 text-center max-w-lg">
                     Paste your Python script below, or try one of these suggestions to get started.
@@ -220,6 +227,37 @@ const ChatPage = () => {
                           </div>
                         )}
                       </div>
+
+                      {/* RAG Sources Metadata */}
+                      {chat.rag_sources && chat.rag_sources.length > 0 && (
+                        <div className="mt-2 pt-3 border-t border-greenDark/10 flex flex-col gap-2 animation-fade-in">
+                          <span className="text-xs font-bold text-greenDark/70 uppercase tracking-wider flex items-center gap-1">
+                            <Globe size={12} className="text-greenLight" />
+                            Sources Utilized
+                          </span>
+                          <div className="flex flex-wrap gap-2">
+                            {chat.rag_sources.map((sourceUrl, idx) => (
+                              <a 
+                                key={idx} 
+                                href={sourceUrl} 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className="text-xs text-greenDark bg-greenLight/10 hover:bg-greenLight/20 px-2.5 py-1.5 rounded-lg border border-greenDark/10 transition-colors truncate max-w-[250px] font-medium flex items-center gap-1"
+                                title={sourceUrl}
+                              >
+                                {(() => {
+                                  try {
+                                    return new URL(sourceUrl).hostname.replace('www.', '');
+                                  } catch (e) {
+                                    const filename = sourceUrl.split(/[/\\]/).pop() || sourceUrl;
+                                    return filename.length > 30 ? filename.slice(0, 30) + "..." : filename;
+                                  }
+                                })()}
+                              </a>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>

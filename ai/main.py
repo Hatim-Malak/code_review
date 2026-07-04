@@ -71,7 +71,8 @@ class AgentState(TypedDict, total=False):
     web: str
     isPython: bool
     result: str
-    context_str: str  
+    rag_sources:list[str]
+    context_str: str 
 
 def web_search_tool(query: str) -> str:
     """up-to-date information via tavily"""
@@ -99,7 +100,13 @@ def rag_search_tool(query: str) -> str:
             include_metadata=True
         )
         if result and result.matches:
-            return "\n\n".join(match.metadata.get("page_content", "") for match in result.matches)
+            return [
+                {
+                    "content": match.metadata.get("page_content", ""),
+                    "source": match.metadata.get("source", "Unknown Source") # Grabs the filename/URL
+                } 
+                for match in result.matches
+            ]
         return ""
     except Exception as e:
         print(f"error in rag_search_tool {e}")
@@ -128,11 +135,23 @@ def build_agent_graph(model_name: str):
     def router_node(state: AgentState) -> AgentState:
         message = [
             ("system", (
-                "You have access to tools: web_search_tool, rag_search_tool.\n"
-                "You are a router that decides how to handle user queries:\n"
-                "- Use 'end' for pure greeting or non-python questions.\n"
-                "- Use 'rag' when knowledge base lookup is needed.\n"
-                "- Use 'answer' when you can answer directly.\n"
+                "You are the core routing agent for a Python-focused AI assistant.\n"
+                "Analyze the user's query and route it to the correct node by strictly following these rules:\n\n"
+                
+                "ROUTE: 'rag'\n"
+                "- Use when the user asks for specific documentation, project architecture, or niche information that requires looking up an external Knowledge Base.\n\n"
+                
+                "ROUTE: 'answer'\n"
+                "- Use when the query is a general Python coding question (e.g., syntax, logic, standard libraries, debugging) that you can answer directly from your internal knowledge.\n\n"
+                
+                "ROUTE: 'end'\n"
+                "- Use ONLY for conversational pleasantries (e.g., 'hello', 'hi', 'thanks') OR if an out-of-scope/non-Python query somehow bypassed previous filters.\n"
+                "- CRITICAL: If you select 'end', you MUST populate the 'reply' field with an appropriate response (e.g., 'Hello! How can I help you with Python today?' or a polite rejection).\n"
+
+                "CRITICAL INSTRUCTIONS:\n"
+                "1. You MUST invoke the RouteDecision tool.\n"
+                "2. DO NOT output any conversational text, pleasantries, or explanations. Output ONLY the tool call.\n"
+                "3. The tool does NOT require a 'query' parameter."
             )),
             ("user", state["query"])
         ]
@@ -147,13 +166,23 @@ def build_agent_graph(model_name: str):
         return out
     
     def rag_node(state: AgentState) -> AgentState:
-        chunks = rag_search_tool(state["query"]) if state['route'] == 'rag' else ""
+        docs = rag_search_tool(state["query"]) if state['route'] == 'rag' else []
+        
+        chunks_str = "\n\n".join([d["content"] for d in docs]) if docs else ""
+        
+        sources = list(set([d["source"] for d in docs])) if docs else []
+        
         judge_message = [
             SystemMessage(content="You are a judge evaluating if the retrieved information is sufficient."),
-            HumanMessage(content=f"Question: {state['query']}\n\nRetrieved info: {chunks}\n\nIs this sufficient?")
+            HumanMessage(content=f"Question: {state['query']}\n\nRetrieved info: {chunks_str}\n\nIs this sufficient?")
         ]
         verdict = judge_llm.invoke(judge_message)
-        return {"rag": chunks, "route": "answer" if verdict.sufficient else "web"}
+        
+        return {
+            "rag": chunks_str, 
+            "rag_sources": sources, # Save the sources to state
+            "route": "answer" if verdict.sufficient else "web"
+        }
     
     def web_node(state: AgentState) -> AgentState:
         snippet = web_search_tool(state["query"])
@@ -242,4 +271,6 @@ def aiBot(data: AIQuery):
     
     result = agent.invoke(initial_state)
     
-    return {"response": result.get("result", "An error occurred.")}
+    return {"response": result.get("result", "An error occurred."),
+            "rag_sources":result.get("rag_sources", [])
+            }

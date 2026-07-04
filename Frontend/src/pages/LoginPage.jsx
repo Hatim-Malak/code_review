@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../store/useAuthStore.js";
 import toast from "react-hot-toast";
+import { Helmet } from "react-helmet-async";
 
 import AuthVisual from "../components/AuthVisual.jsx";
 
@@ -32,6 +33,10 @@ const LoginPage = () => {
 
   return (
     <div className="w-full min-h-screen bg-cream flex overflow-hidden selection:bg-greenDark selection:text-cream">
+      <Helmet>
+        <title>Log In to HatMind</title>
+        <meta name="description" content="Log in to your HatMind account to access your conversation history, review code, and start chatting with your AI coding assistant." />
+      </Helmet>
       {/* Left Panel - Branding & Immersive Visuals */}
       <AuthVisual />
 

@@ -14,6 +14,9 @@ const chatSchema = new mongoose.Schema(
             type:String,
             default:null
         },
+        rag_sources:{
+            type:[String]
+        },
         user_message:{
             type:String,
         },
