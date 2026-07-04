@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Menu, X } from "lucide-react";
+import { Menu, X, PanelLeftOpen } from "lucide-react";
 
-const CustomNavbar = ({ items, logo }) => {
+const CustomNavbar = ({ items, logo, className = "", onSidebarToggle }) => {
   const [isScrolled, setIsScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const location = useLocation();
@@ -21,18 +21,29 @@ const CustomNavbar = ({ items, logo }) => {
         isScrolled
           ? "bg-cream/80 backdrop-blur-md shadow-sm py-3"
           : "bg-transparent py-5"
-      }`}
+      } ${className}`}
     >
       <div className="max-w-7xl mx-auto px-6 flex justify-between items-center">
-        {/* Logo */}
-        <Link to="/" className="flex items-center gap-2 group">
-          <div className="w-10 h-10 rounded-xl bg-greenDark flex justify-center items-center overflow-hidden transition-transform group-hover:scale-105 shadow-md">
-            <img src={logo} alt="Logo" className="w-full h-full object-cover" />
-          </div>
-          <span className="text-2xl font-black tracking-tighter text-greenDark">
-            HatMind
-          </span>
-        </Link>
+        <div className="flex items-center gap-3">
+          {onSidebarToggle && (
+            <button
+              onClick={onSidebarToggle}
+              className="lg:hidden p-2 -ml-2 text-greenDark/70 hover:text-greenDark hover:bg-greenDark/10 rounded-xl transition-all"
+              title="Open chat history"
+            >
+              <PanelLeftOpen size={22} />
+            </button>
+          )}
+          {/* Logo */}
+          <Link to="/" className="flex items-center gap-2 group">
+            <div className="w-10 h-10 rounded-xl bg-greenDark flex justify-center items-center overflow-hidden transition-transform group-hover:scale-105 shadow-md">
+              <img src={logo} alt="Logo" className="w-full h-full object-cover" />
+            </div>
+            <span className="text-2xl font-black tracking-tighter text-greenDark">
+              HatMind
+            </span>
+          </Link>
+        </div>
 
         {/* Desktop Nav */}
         <nav className="hidden md:flex items-center gap-1 bg-cream/50 backdrop-blur-sm border border-greenDark/10 p-1 rounded-full shadow-sm">

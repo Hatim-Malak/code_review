@@ -9,6 +9,12 @@ export const useChat = create((set, get) => ({
   socket: null,
   socketConnected: false,
 
+  // Session management state
+  sessions: [],
+  activeSessionId: null,
+  isLoadingSessions: false,
+  isHistoryLoading: false,
+
   connectSocket: (userId) => {
     if (!userId) return;
 
@@ -59,8 +65,58 @@ export const useChat = create((set, get) => ({
     set({ socket });
   },
 
+  // Load all conversation sessions for the sidebar
+  loadSessions: async () => {
+    try {
+      set({ isLoadingSessions: true });
+      const res = await axiosInstance.get("/chat/sessions");
+      if (res.data) set({ sessions: res.data });
+    } catch (error) {
+      console.error("Error loading sessions:", error);
+    } finally {
+      set({ isLoadingSessions: false });
+    }
+  },
+
+  // Select a session and load its messages
+  selectSession: async (conversationId) => {
+    try {
+      set({ activeSessionId: conversationId, chats: [], isHistoryLoading: true });
+      const res = await axiosInstance.get(`/chat/history?converId=${conversationId}`);
+      if (res.data) set({ chats: res.data });
+    } catch (error) {
+      console.error("Error loading session history:", error);
+      set({ chats: [] });
+    } finally {
+      set({ isHistoryLoading: false });
+    }
+  },
+
+  // Start a fresh conversation
+  startNewChat: () => {
+    set({ activeSessionId: null, chats: [] });
+  },
+
+  // Delete a session
+  deleteSession: async (conversationId) => {
+    try {
+      await axiosInstance.delete(`/chat/session/${conversationId}`);
+      const { activeSessionId } = get();
+      // If the deleted session was active, clear the chat
+      if (activeSessionId === conversationId) {
+        set({ activeSessionId: null, chats: [] });
+      }
+      // Reload sessions list
+      get().loadSessions();
+      toast.success("Conversation deleted");
+    } catch (error) {
+      console.error("Error deleting session:", error);
+      toast.error("Failed to delete conversation");
+    }
+  },
+
   sendMessage: async (query, model_name = "llama-3.1-8b-instant") => {
-    const { chats } = get();
+    const { chats, activeSessionId } = get();
     if (!query.trim()) return toast.error("Please enter a message");
 
     try {
@@ -69,18 +125,33 @@ export const useChat = create((set, get) => ({
         chats: [...chats, { user_message: query, AI_message: null }],
       });
 
-      await axiosInstance.post("/chat/add_chat", { query, model_name });
+      const res = await axiosInstance.post("/chat/add_chat", {
+        query,
+        model_name,
+        converId: activeSessionId,
+      });
+
+      // If this was a new conversation, store the returned conversationId
+      if (res.data?.conversationId && !activeSessionId) {
+        set({ activeSessionId: res.data.conversationId });
+      }
+
+      // Reload sessions to show the new/updated conversation in sidebar
+      get().loadSessions();
     } catch (error) {
       console.error("Error sending message:", error);
-      toast.error("Error sending message");
+      const errorMsg = error?.response?.data?.message || error.message || "Error sending message";
+      toast.error(errorMsg);
     } finally {
       set({ isSending: false });
     }
   },
 
   loadHistory: async () => {
+    const { activeSessionId } = get();
+    if (!activeSessionId) return;
     try {
-      const res = await axiosInstance.get("/chat/history");
+      const res = await axiosInstance.get(`/chat/history?converId=${activeSessionId}`);
       if (res.data) set({ chats: res.data });
     } catch (error) {
       console.error("Error loading history:", error);

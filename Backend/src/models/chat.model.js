@@ -10,6 +10,10 @@ const chatSchema = new mongoose.Schema(
             type:String,
             required:true
         },
+        title:{
+            type:String,
+            default:null
+        },
         user_message:{
             type:String,
         },

@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { cn } from "../../lib/utils.ts";
+import { cn } from "../lib/utils";
 import {
   Play,
   Pause,
