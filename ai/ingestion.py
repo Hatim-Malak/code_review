@@ -1,29 +1,80 @@
 import os
+import time
 from langchain_huggingface import HuggingFaceEndpointEmbeddings
 from pinecone import Pinecone,ServerlessSpec
 from langchain_text_splitters import RecursiveCharacterTextSplitter,MarkdownHeaderTextSplitter,Language
+from typing_extensions import TypedDict
+from tenacity import retry, wait_exponential, stop_after_attempt
 
 HF_TOKEN         = os.getenv("HUGGINGFACEHUB_API_TOKEN")
 EMBEDDING_MODEL  = "BAAI/bge-m3"
 
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
-INDEX_NAME = "kb-index"
+PINECONE_INDEX = "kb-index"
+PINECONE_CLOUD   = "aws"
+PINECONE_REGION  = "us-east-1"
+EMBED_DIM        = 1024
+
+class Chunk(TypedDict):
+   chunk_id:str
+   text:str
+   chunk_index:str
+   token_count:str
+
 pc = Pinecone(api_key=PINECONE_API_KEY)
 
-if INDEX_NAME not in pc.list_indexes().names():
-    pc.create_index(
-        name=INDEX_NAME,
-        dimension=384,
-        metric='cosine',
-        spec=ServerlessSpec(cloud='aws', region='us-east-1')
-    )
-index = pc.Index(INDEX_NAME)
-
-embeddings = HuggingFaceEndpointEmbeddings(
+def _get_embed_model() -> HuggingFaceEndpointEmbeddings:
+    """Returns a singleton HuggingFace embeddings client."""
+    global _embed_model
+    if _embed_model is None:
+        if not HF_TOKEN:
+            raise ValueError("HF_TOKEN not set in .env")
+        print(f"[chunk_embed] Connecting to HuggingFace Inference API ({EMBEDDING_MODEL})...")
+        _embed_model = HuggingFaceEndpointEmbeddings(
             model=EMBEDDING_MODEL,
             huggingfacehub_api_token=HF_TOKEN,
         )
+        print(f"[chunk_embed] HF client ready.")
+    return _embed_model
 
+def _get_pinecone_index():
+    global _pinecone_index
+    if _pinecone_index is None:
+        if not PINECONE_API_KEY:
+            raise ValueError("PINECONE_API_KEY not set in .env")
+
+        pc = Pinecone(api_key=PINECONE_API_KEY)
+
+        existing = [idx.name for idx in pc.list_indexes()]
+        if PINECONE_INDEX not in existing:
+            print(f"[chunk_embed] Creating Pinecone index '{PINECONE_INDEX}'...")
+            pc.create_index(
+                name      = PINECONE_INDEX,
+                dimension = EMBED_DIM,
+                metric    = "cosine",
+                spec      = ServerlessSpec(
+                    cloud  = PINECONE_CLOUD,
+                    region = PINECONE_REGION,
+                ),
+            )
+            while not pc.describe_index(PINECONE_INDEX).status["ready"]:
+                print("[chunk_embed] Waiting for index to be ready...")
+                time.sleep(2)
+            print(f"[chunk_embed] Index '{PINECONE_INDEX}' created.")
+        else:
+            print(f"[chunk_embed] Using existing index '{PINECONE_INDEX}'.")
+
+        _pinecone_index = pc.Index(PINECONE_INDEX)
+    return _pinecone_index
+
+@retry(
+    wait=wait_exponential(min=2, max=10),
+    stop=stop_after_attempt(3),
+    reraise=True,
+)
+def _embed_texts_with_retry(model: HuggingFaceEndpointEmbeddings, texts: list[str]) -> list[list[float]]:
+    """Calls the HuggingFace API with automatic retry on rate limit errors."""
+    return model.embed_documents(texts)
 
 PEP_8 = """PEP: 8
 Title: Style Guide for Python Code
@@ -1671,7 +1722,7 @@ Copyright
 
 This document has been placed in the public domain."""
 
-def readme_splitter(readme:str)->list:
+def _get_readme_splitter(readme:str)->list:
     splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200,language = Language.MARKDOWN)
     headers_to_split_on = [
         ("#", "Header 1"),
@@ -1688,9 +1739,14 @@ def readme_splitter(readme:str)->list:
     return chunks
 
 
-def embed_chunks_and_upsert_to_pinecone(chunks:list):
-    try:
-        embedding = embeddings.embed_documents(chunks)
+def embed_chunks_and_upsert_to_pinecone(chunks:list[Chunk]) -> list[tuple[Chunk,list[float]]]:
+   """Embeds all chunks via BGE-M3 on the HuggingFace Inference API."""
+   try:
+      model = _get_embed_model()
+      texts = [f"Represent this sentence: {c['text']}" for c in chunks]
+   except Exception as e:
+      print(f"There is an error in embedded chunks {e}")
         
-    except Exception as e:
-        print(f"There is an error in embedded chunks {e}")
+# def retrival_argument_generation():
+   
+   
