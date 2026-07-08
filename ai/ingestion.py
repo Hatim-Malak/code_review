@@ -1744,6 +1744,11 @@ def embed_chunks_and_upsert_to_pinecone(chunks:list[Chunk]) -> list[tuple[Chunk,
    try:
       model = _get_embed_model()
       texts = [f"Represent this sentence: {c['text']}" for c in chunks]
+      print(f"[chunk_embed] Embedding {len(chunks)} chunks via HuggingFace API ({EMBEDDING_MODEL})...")
+
+      embeddings = _embed_texts_with_retry(model, texts)
+      print(f"[chunk_embed] Got {len(embeddings)} embeddings (dim={len(embeddings[0]) if embeddings else 0}).")
+      return list(zip(chunks, embeddings))
    except Exception as e:
       print(f"There is an error in embedded chunks {e}")
         
