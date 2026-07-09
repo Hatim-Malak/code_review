@@ -91,23 +91,23 @@ def _embed_texts_with_retry(model: HuggingFaceEndpointEmbeddings, texts: list[st
     return model.embed_documents(texts)
 
 def _load_datasets() -> list[Chunk]:
-   print("Loading iamtarun/python_code_instructions_18k_alpaca...")
-   alpaca_ds = load_dataset("iamtarun/python_code_instructions_18k_alpaca", split="train")
+   # print("Loading iamtarun/python_code_instructions_18k_alpaca...")
+   # alpaca_ds = load_dataset("iamtarun/python_code_instructions_18k_alpaca", split="train")
    chunks = []
-   for idx, row in enumerate(alpaca_ds):
+   # for idx, row in enumerate(alpaca_ds):
         
-      search_text = f"{row['instruction']} {row['input']}".strip()
-      code_solution = row['output']
+   #    search_text = f"{row['instruction']} {row['input']}".strip()
+   #    code_solution = row['output']
       
-      chunk_hash = hashlib.md5(f"alpaca_{idx}".encode()).hexdigest()[:8]
-      chunks.append(Chunk(
-         chunk_id=f"chunk_alpaca_{idx:04d}_{chunk_hash}",
-         text=search_text,       # Sent to BGE-M3 for vector embeddings
-         chunk_index= idx,
-         token_count= len(search_text.split()),
-         code_solution= code_solution, # Kept in metadata to pass to the LLM
-         source="iamtarun_18k"
-      ))
+   #    chunk_hash = hashlib.md5(f"alpaca_{idx}".encode()).hexdigest()[:8]
+   #    chunks.append(Chunk(
+   #       chunk_id=f"chunk_alpaca_{idx:04d}_{chunk_hash}",
+   #       text=search_text,       # Sent to BGE-M3 for vector embeddings
+   #       chunk_index= idx,
+   #       token_count= len(search_text.split()),
+   #       code_solution= code_solution, # Kept in metadata to pass to the LLM
+   #       source="iamtarun_18k"
+   #    ))
    
    print("Loading flytech/python-codes-25k...")
    flytech_ds = load_dataset("flytech/python-codes-25k", split="train")
@@ -126,45 +126,45 @@ def _load_datasets() -> list[Chunk]:
             source = "flytech_25k"
       ))
 
-   print("Loading Qwen-59k-Python-Instruct (Web Frameworks)...")
-   web_ds = load_dataset("karti06k/Qwen-59k-Python-Instruct", split="train")
+   # print("Loading Qwen-59k-Python-Instruct (Web Frameworks)...")
+   # web_ds = load_dataset("karti06k/Qwen-59k-Python-Instruct", split="train")
    
-   web_subset = web_ds.select(range(min(MAX_WEB_RECORDS, len(web_ds))))
+   # web_subset = web_ds.select(range(min(MAX_WEB_RECORDS, len(web_ds))))
     
-   for idx, row in enumerate(web_subset):
-      # Combining the instruction and the input context for the search vector
-      search_text = f"{row.get('instruction', '')} {row.get('input', '')}".strip()
-      code_solution = row.get('output', '')
+   # for idx, row in enumerate(web_subset):
+   #    # Combining the instruction and the input context for the search vector
+   #    search_text = f"{row.get('instruction', '')} {row.get('input', '')}".strip()
+   #    code_solution = row.get('output', '')
         
-      chunk_hash = hashlib.md5(f"web_{idx}".encode()).hexdigest()[:8]
-      chunks.append(Chunk(
-         chunk_id =  f"chunk_web_{idx:04d}_{chunk_hash}",
-         text = search_text,
-         chunk_index = idx,
-         token_count = len(search_text.split()),
-         code_solution = code_solution, 
-         source = "qwen_web_frameworks"
-      ))
+   #    chunk_hash = hashlib.md5(f"web_{idx}".encode()).hexdigest()[:8]
+   #    chunks.append(Chunk(
+   #       chunk_id =  f"chunk_web_{idx:04d}_{chunk_hash}",
+   #       text = search_text,
+   #       chunk_index = idx,
+   #       token_count = len(search_text.split()),
+   #       code_solution = code_solution, 
+   #       source = "qwen_web_frameworks"
+   #    ))
    
-   print("Loading ds-coder-instruct-v1 (Data Science)...")
-   ds_dataset = load_dataset("ed001/ds-coder-instruct-v1", split="train")
+   # print("Loading ds-coder-instruct-v1 (Data Science)...")
+   # ds_dataset = load_dataset("ed001/ds-coder-instruct-v1", split="train")
     
-   # Slice to respect free tier
-   ds_subset = ds_dataset.select(range(min(MAX_DS_RECORD, len(ds_dataset))))
+   # # Slice to respect free tier
+   # ds_subset = ds_dataset.select(range(min(MAX_DS_RECORD, len(ds_dataset))))
     
-   for idx, row in enumerate(ds_subset):
-      search_text = f"{row.get('instruction', '')} {row.get('input', '')}".strip()
-      code_solution = row.get('output', '')
+   # for idx, row in enumerate(ds_subset):
+   #    search_text = f"{row.get('instruction', '')} {row.get('input', '')}".strip()
+   #    code_solution = row.get('output', '')
         
-      chunk_hash = hashlib.md5(f"ds_{idx}".encode()).hexdigest()[:8]
-      chunks.append(Chunk(
-         chunk_id = f"chunk_ds_{idx:04d}_{chunk_hash}",
-         text = search_text,
-         chunk_index = idx,
-         token_count = len(search_text.split()),
-         code_solution = code_solution,
-         source = "ds_coder_pandas"
-      ))
+   #    chunk_hash = hashlib.md5(f"ds_{idx}".encode()).hexdigest()[:8]
+   #    chunks.append(Chunk(
+   #       chunk_id = f"chunk_ds_{idx:04d}_{chunk_hash}",
+   #       text = search_text,
+   #       chunk_index = idx,
+   #       token_count = len(search_text.split()),
+   #       code_solution = code_solution,
+   #       source = "ds_coder_pandas"
+   #    ))
 
    print(f"Total advanced framework instructions ready: {len(chunks)}")
    return chunks

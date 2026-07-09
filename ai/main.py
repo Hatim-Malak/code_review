@@ -5,7 +5,8 @@ from pydantic import BaseModel, Field
 from langchain_huggingface import HuggingFaceEmbeddings
 from dotenv import load_dotenv
 from langgraph.graph import END, START, StateGraph
-from typing import Literal
+from sentence_transformers import CrossEncoder
+from typing import Literal,List,Dict,Any
 from langchain_groq import ChatGroq
 from langchain_tavily import TavilySearch
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -22,6 +23,9 @@ app = FastAPI()
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 INDEX_NAME = "kb-index"
 pc = Pinecone(api_key=PINECONE_API_KEY)
+
+print("[rag_init] Loading Cross-Encoder reranker model...")
+reranker = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
 
 if INDEX_NAME not in pc.list_indexes().names():
     pc.create_index(
@@ -63,6 +67,9 @@ class RagJudge(BaseModel):
 class CheckLanguage(BaseModel):
     isPython: bool
 
+class MultiQueries(BaseModel):
+    queries:list[str]
+
 class AgentState(TypedDict, total=False):
     query: str
     route: Literal["rag", "answer", "end"]
@@ -73,6 +80,22 @@ class AgentState(TypedDict, total=False):
     result: str
     rag_sources:list[str]
     context_str: str 
+
+multiquery_llm = ChatGroq(model="llama-3.1-8b-instant").with_structured_output(MultiQueries)
+
+def _generate_multi_queries(query:str) -> list[str]:
+    """Generates alternative versions of the query to optimize semantic hit rates."""
+    prompt = f"""You are an AI assistant for a technical codebase search tool. 
+    Generate 3 alternative versions of the following user query to capture different technical terms, 
+    synonyms, or phrasing. Return them as a line-separated list.
+    Query: {query}"""
+    
+    try:
+        response = multiquery_llm.invoke(prompt)
+        return list(set([query] + response))
+    except Exception as e:
+        print(f"[rag_warning] Multi-query expansion failed: {e}. Falling back to original query.")
+        return [query]
 
 def web_search_tool(query: str) -> str:
     """up-to-date information via tavily"""
@@ -90,24 +113,63 @@ def web_search_tool(query: str) -> str:
         raise HTTPException(status_code=500, detail="Internal server error")
     
 
-def rag_search_tool(query: str) -> str:
-    """Top-3 chunks from kb"""
+def rag_search_tool(query: str,source_filter:str = None) -> str:
+    """Advanced RAG pipeline featuring Multi-Query expansion, metadata filtering, and Cross-Encoder reranking.
+    """
     try:
-        query_vector = embeddings.embed_query(query)
-        result = index.query(
-            vector=query_vector,
-            top_k=3,
-            include_metadata=True
-        )
-        if result and result.matches:
-            return [
-                {
-                    "content": match.metadata.get("page_content", ""),
-                    "source": match.metadata.get("source", "Unknown Source") # Grabs the filename/URL
-                } 
-                for match in result.matches
-            ]
-        return ""
+        expanded_queries = _generate_multi_queries(query)
+        candidate_pool:Dict[str,Dict[str,Any]] = {}
+        
+        filter_expression = {}
+        if source_filter:
+            filter_expression["source"] = {"$eq":source_filter}
+        
+        for q in expanded_queries:
+            query_vector =  embeddings.embed_query(q)
+            
+            result = index.query(
+                vector=query_vector,
+                top_k=20,
+                include_metadata=True,
+                filter=filter_expression if filter_expression else None
+            )
+            if result and result.matches:
+                for match in result.matches:
+                    if match.id not in candidate_pool:
+                        candidate_pool[match.id] = {
+                            "id": match.id,
+                            "text": match.metadata.get("text", ""), # Fixed: Match your ingestion key
+                            "code_solution": match.metadata.get("code_solution", ""),
+                            "source": match.metadata.get("source", "Unknown Source"),
+                            "token_count": match.metadata.get("token_count", 0),
+                            "chunk_index": match.metadata.get("chunk_index", 0)
+                        }
+        if not candidate_pool:
+            return []
+        
+        candidates = list(candidate_pool.values())
+        
+        rerank_pairs = [[query,item["text"]] for item in candidates]
+        scores = reranker.predict(rerank_pairs)
+        
+        for idx,score in enumerate(scores):
+            candidates[idx]["rerank_score"] = float(score)
+        candidates.sort(key=lambda x: x["rerank_score"], reverse=True)
+        elite_chunks = candidates[:3]
+        formatted_results = [
+            {
+                "content": f"Context:\n{chunk['text']}\n\nSolution/Code:\n{chunk['code_solution']}",
+                "source": chunk["source"],
+                "metadata": {
+                    "chunk_index": chunk["chunk_index"],
+                    "token_count": chunk["token_count"],
+                    "relevance_score": chunk["rerank_score"]
+                }
+            }
+            for chunk in elite_chunks
+        ]
+
+        return formatted_results
     except Exception as e:
         print(f"error in rag_search_tool {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -122,6 +184,7 @@ def build_agent_graph(model_name: str):
     answer_llm = ChatGroq(model=model_name)
     language_checking_llm = ChatGroq(model=model_name).with_structured_output(CheckLanguage)
     fast_llm = ChatGroq(model="llama-3.1-8b-instant")
+
     
     def language_checking_node(state: AgentState) -> AgentState:
         messages = [
