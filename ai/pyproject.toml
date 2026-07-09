@@ -21,5 +21,6 @@ dependencies = [
     "pymongo[srv]>=4.9.0",
     "pypdf>=6.1.1",
     "python-dotenv>=1.1.1",
+    "tqdm>=4.67.1",
     "uvicorn>=0.37.0",
 ]

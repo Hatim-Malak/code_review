@@ -31,6 +31,7 @@ dependencies = [
     { name = "pymongo" },
     { name = "pypdf" },
     { name = "python-dotenv" },
+    { name = "tqdm" },
     { name = "uvicorn" },
 ]
 
@@ -52,6 +53,7 @@ requires-dist = [
     { name = "pymongo", extras = ["srv"], specifier = ">=4.9.0" },
     { name = "pypdf", specifier = ">=6.1.1" },
     { name = "python-dotenv", specifier = ">=1.1.1" },
+    { name = "tqdm", specifier = ">=4.67.1" },
     { name = "uvicorn", specifier = ">=0.37.0" },
 ]
 

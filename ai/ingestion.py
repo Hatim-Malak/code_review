@@ -1,6 +1,8 @@
 import os
 import time
 import hashlib
+from tqdm import tqdm
+from dotenv import load_dotenv
 from datasets import load_dataset
 from langchain_huggingface import HuggingFaceEndpointEmbeddings
 from pinecone import Pinecone,ServerlessSpec
@@ -8,7 +10,9 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter,MarkdownHead
 from typing_extensions import TypedDict
 from tenacity import retry, wait_exponential, stop_after_attempt
 
-HF_TOKEN         = os.getenv("HUGGINGFACEHUB_API_TOKEN")
+load_dotenv()
+
+HF_TOKEN         = os.getenv("HF_TOKEN")
 EMBEDDING_MODEL  = "BAAI/bge-m3"
 
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
@@ -176,11 +180,9 @@ def _embed_chunks(chunks:list[Chunk],batch_size:int = 100) -> list[tuple[Chunk,l
       
       print(f"[chunk_embed] Embedding {len(chunks)} chunks via HuggingFace API ({EMBEDDING_MODEL})...")
 
-      for i in range(0, len(chunks), batch_size):
+      for i in tqdm(range(0, len(chunks), batch_size), desc="Embedding Data", colour="green", unit="batch"):
          batch = chunks[i:i + batch_size]
          texts = [f"Represent this sentence: {c['text']}" for c in batch]
-         
-         print(f"  -> Processing embedding batch {i // batch_size + 1}/{total_batches}")
          embeddings = _embed_texts_with_retry(model, texts)
          results.extend(list(zip(batch, embeddings)))
          
@@ -213,7 +215,7 @@ def _upsert_to_pinecone(chunk_embeddings:list[tuple[Chunk,list[float]]]) -> int:
          }  
       })
    
-   for batch_start in range(0,len(vectors),PINECONE_BATCH):
+   for batch_start in tqdm(range(0,len(vectors),PINECONE_BATCH), desc="Upserting Vectors", colour="green", unit="batch"):
       batch = vectors[batch_start:batch_start+PINECONE_BATCH]
       index.upsert(vectors=batch)
       total_upserted += len(batch)
@@ -246,4 +248,7 @@ def _retrival_argument_generation():
    }
    
    return summary
+
+if __name__ == "__main__":
+   summary = _retrival_argument_generation()
    
