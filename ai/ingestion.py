@@ -1763,6 +1763,8 @@ def _get_readme_splitter(readme:str)->list[Chunk]:
 
 def _embed_chunks(chunks:list[Chunk]) -> list[tuple[Chunk,list[float]]]:
    """Embeds all chunks via BGE-M3 on the HuggingFace Inference API."""
+   if not chunks:
+      return []
    try:
       model = _get_embed_model()
       texts = [f"Represent this sentence: {c['text']}" for c in chunks]
@@ -1773,6 +1775,7 @@ def _embed_chunks(chunks:list[Chunk]) -> list[tuple[Chunk,list[float]]]:
       return list(zip(chunks, embeddings))
    except Exception as e:
       print(f"There is an error in embedded chunks {e}")
+      raise e
 
 def _upsert_to_pinecone(chunk_embeddings:list[tuple[Chunk,list[float]]]) -> int:
    if not chunk_embeddings:
