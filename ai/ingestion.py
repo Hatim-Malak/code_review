@@ -1,5 +1,6 @@
 import os
 import time
+import hashlib
 from langchain_huggingface import HuggingFaceEndpointEmbeddings
 from pinecone import Pinecone,ServerlessSpec
 from langchain_text_splitters import RecursiveCharacterTextSplitter,MarkdownHeaderTextSplitter,Language
@@ -14,12 +15,16 @@ PINECONE_INDEX = "kb-index"
 PINECONE_CLOUD   = "aws"
 PINECONE_REGION  = "us-east-1"
 EMBED_DIM        = 1024
+PINECONE_BATCH = 100
+
+_embed_model: HuggingFaceEndpointEmbeddings | None = None
+_pinecone_index = None
 
 class Chunk(TypedDict):
    chunk_id:str
    text:str
-   chunk_index:str
-   token_count:str
+   chunk_index:int
+   token_count:int
 
 pc = Pinecone(api_key=PINECONE_API_KEY)
 
@@ -1722,24 +1727,41 @@ Copyright
 
 This document has been placed in the public domain."""
 
-def _get_readme_splitter(readme:str)->list:
-    splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200,language = Language.MARKDOWN)
-    headers_to_split_on = [
-        ("#", "Header 1"),
-        ("##", "Header 2"),
-        ("###", "Header 3"),
-    ]
-    markdown_splitter = MarkdownHeaderTextSplitter(
-        headers_to_split_on=headers_to_split_on,
-        strip_headers=True
-    )
-    md_header_splits = markdown_splitter.split_text(readme)
-    chunks = splitter.split_documents(md_header_splits)
+def _get_readme_splitter(readme:str)->list[Chunk]:
+   splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200,language = Language.MARKDOWN)
+   headers_to_split_on = [
+      ("#", "Header 1"),
+      ("##", "Header 2"),
+      ("###", "Header 3"),
+   ]
+   markdown_splitter = MarkdownHeaderTextSplitter(
+      headers_to_split_on=headers_to_split_on,
+      strip_headers=True
+   )
+   md_header_splits = markdown_splitter.split_text(readme)
+   readme_splitted = splitter.split_documents(md_header_splits)
     
-    return chunks
+   chunks: list[Chunk] = []
+   for idx,chunk_text in enumerate(readme_splitted):
+      chunk_text = chunk_text.page_content.strip()
+      if not chunk_text:
+         continue
+      chunk_hash = hashlib.md5(
+         f"{idx}_{chunk_text[:50]}".encode()
+      ).hexdigest()[:8]
+      chunk_id = f"chunk_{idx:04d}_{chunk_hash}"
+
+      chunks.append(Chunk(
+         chunk_id=chunk_id,
+         chunk_index=idx,
+         text=chunk_text,
+         token_count=len(chunk_text.split()),
+      ))
+   return chunks
+      
 
 
-def embed_chunks_and_upsert_to_pinecone(chunks:list[Chunk]) -> list[tuple[Chunk,list[float]]]:
+def _embed_chunks(chunks:list[Chunk]) -> list[tuple[Chunk,list[float]]]:
    """Embeds all chunks via BGE-M3 on the HuggingFace Inference API."""
    try:
       model = _get_embed_model()
@@ -1751,7 +1773,55 @@ def embed_chunks_and_upsert_to_pinecone(chunks:list[Chunk]) -> list[tuple[Chunk,
       return list(zip(chunks, embeddings))
    except Exception as e:
       print(f"There is an error in embedded chunks {e}")
-        
-# def retrival_argument_generation():
+
+def _upsert_to_pinecone(chunk_embeddings:list[tuple[Chunk,list[float]]]) -> int:
+   if not chunk_embeddings:
+      return 0
    
+   index = _get_pinecone_index()
+   total_upserted = 0
+   
+   vectors = []
+   for chunk,embedding in chunk_embeddings:
+      vectors.append({
+         "id":chunk["chunk_id"],
+         "values":embedding,
+         "metadata":{
+            "text":chunk["text"],
+            "chunk_index":chunk["chunk_index"],
+            "token_count":chunk["token_count"],
+         }  
+      })
+   
+   for batch_start in range(0,len(vectors),PINECONE_BATCH):
+      batch = vectors[batch_start:batch_start+PINECONE_BATCH]
+      index.upsert(vectors=batch)
+      total_upserted += len(batch)
+   
+   return total_upserted
+
+def _retrival_argument_generation():
+   chunks = _get_readme_splitter(PEP_8)
+   if not chunks:
+      return {
+         "chunks_created":   0,
+         "vectors_upserted": 0,
+         "error":"No chunks produced — transcript may be empty",
+      }
+   
+   chunk_embeddings = _embed_chunks(chunks)
+   total_upserted = _upsert_to_pinecone(chunk_embeddings)
+   
+   summary = {
+      "chunks_created":   len(chunks),
+      "vectors_upserted": total_upserted,
+      "token_stats": {
+         "total_tokens": sum(c["token_count"] for c in chunks),
+         "avg_tokens":   round(sum(c["token_count"] for c in chunks) / len(chunks), 1),
+         "min_tokens":   min(c["token_count"] for c in chunks),
+         "max_tokens":   max(c["token_count"] for c in chunks),
+      },
+   }
+   
+   return summary
    
