@@ -2,11 +2,11 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import os
 from pydantic import BaseModel, Field
-from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_huggingface import HuggingFaceEndpointEmbeddings
 from dotenv import load_dotenv
 from langgraph.graph import END, START, StateGraph
 from sentence_transformers import CrossEncoder
-from typing import Literal,List,Dict,Any
+from typing import Literal, List, Dict, Any
 from langchain_groq import ChatGroq
 from langchain_tavily import TavilySearch
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -30,7 +30,7 @@ reranker = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
 if INDEX_NAME not in pc.list_indexes().names():
     pc.create_index(
         name=INDEX_NAME,
-        dimension=384,
+        dimension=1024,
         metric='cosine',
         spec=ServerlessSpec(cloud='aws', region='us-east-1')
     )
@@ -44,12 +44,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-os.environ["GROQ_API_KEY"] = os.getenv("GROQ_API_KEY")
-os.environ["LANGSMITH_API_KEY"] = os.getenv("LANGCHAIN_API_KEY")
-os.environ["LANGSMITH_TRACING"] = "true"
+if os.getenv("GROQ_API_KEY"):
+    os.environ["GROQ_API_KEY"] = os.getenv("GROQ_API_KEY")
 
-embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
-tavily = TavilySearch(max_result=3, topic='general')
+embeddings = HuggingFaceEndpointEmbeddings(
+    model="BAAI/bge-m3",
+    task="feature-extraction",
+    huggingfacehub_api_token=os.getenv("HF_TOKEN")
+)
+tavily = TavilySearch(max_results=3, topic='general')
+
 
 class AIQuery(BaseModel):
     query: str
@@ -57,18 +61,38 @@ class AIQuery(BaseModel):
     context: list[str]
     thread_id: str
 
+
 class RouteDecision(BaseModel):
-    route: Literal["rag", "answer", "end"]
-    reply: str | None = Field(None, description="filled only when route == 'end'")
+    route: Literal["rag", "answer", "end"] = Field(
+        ...,
+        description="The single best route for this query, chosen strictly per the rules given in the system prompt. Must be exactly one of: rag, answer, end."
+    )
+    reply: str | None = Field(
+        None,
+        description="A short, direct reply string. Required (non-empty) only when route='end'. Must be null for route='rag' or route='answer'."
+    )
+
 
 class RagJudge(BaseModel):
-    sufficient: bool    
-    
+    sufficient: bool = Field(
+        ...,
+        description="True only if the retrieved text, taken alone and with no outside knowledge, fully and directly answers the question. False if the retrieved text is empty, off-topic, partial, or ambiguous."
+    )
+
+
 class CheckLanguage(BaseModel):
-    isPython: bool
+    isPython: bool = Field(
+        ...,
+        description="True if the query concerns the Python language, its standard library, or a Python-ecosystem framework/tool (e.g. Django, FastAPI, Pandas, NumPy). False for greetings, small talk, or topics unrelated to Python."
+    )
+
 
 class MultiQueries(BaseModel):
-    queries:list[str]
+    queries: list[str] = Field(
+        ...,
+        description="Exactly 3 short alternative phrasings of the original query, each using different technical terms or synonyms a codebase/docs search might use. Do not repeat the original query and do not answer it."
+    )
+
 
 class AgentState(TypedDict, total=False):
     query: str
@@ -78,24 +102,44 @@ class AgentState(TypedDict, total=False):
     web: str
     isPython: bool
     result: str
-    rag_sources:list[str]
-    context_str: str 
+    rag_sources: list[str]
+    context_str: str
 
-multiquery_llm = ChatGroq(model="llama-3.1-8b-instant").with_structured_output(MultiQueries)
 
-def _generate_multi_queries(query:str) -> list[str]:
-    """Generates alternative versions of the query to optimize semantic hit rates."""
-    prompt = f"""You are an AI assistant for a technical codebase search tool. 
-    Generate 3 alternative versions of the following user query to capture different technical terms, 
-    synonyms, or phrasing. Return them as a line-separated list.
-    Query: {query}"""
-    
+GROUNDING_RULE = (
+    "Never invent facts, APIs, function or class names, parameters, or numbers that are not present "
+    "in the given context or in verified, well-established Python knowledge. If you are not certain, "
+    "say so explicitly instead of guessing."
+)
+
+
+def _safe_structured_invoke(llm, messages, fallback, node_name: str = "llm_call"):
+    """Invokes a structured-output LLM call and falls back safely if parsing fails."""
     try:
-        response = multiquery_llm.invoke(prompt)
-        return list(set([query] + response))
+        return llm.invoke(messages)
     except Exception as e:
-        print(f"[rag_warning] Multi-query expansion failed: {e}. Falling back to original query.")
-        return [query]
+        print(f"[{node_name}_warning] structured output failed, using fallback: {e}")
+        return fallback
+
+
+multiquery_llm = ChatGroq(model="llama-3.1-8b-instant", temperature=0.3).with_structured_output(MultiQueries)
+
+
+def _generate_multi_queries(query: str) -> list[str]:
+    """Generates alternative phrasings of the query to improve semantic recall."""
+    messages = [
+        SystemMessage(content=(
+            "You are a query-expansion assistant for a technical codebase/documentation search tool. "
+            "Given a user query, produce exactly 3 alternative phrasings that use different technical "
+            "terms or synonyms a developer or the documentation might use, while preserving the original "
+            "meaning. Do not answer the query and do not add details it does not imply."
+        )),
+        HumanMessage(content=f"Query: {query}")
+    ]
+    fallback = MultiQueries(queries=[])
+    result = _safe_structured_invoke(multiquery_llm, messages, fallback, "multiquery")
+    return list(dict.fromkeys([query] + result.queries))
+
 
 def web_search_tool(query: str) -> str:
     """up-to-date information via tavily"""
@@ -103,7 +147,7 @@ def web_search_tool(query: str) -> str:
         result = tavily.invoke({"query": query})
         if isinstance(result, dict) and 'results' in result:
             formatted_results = [
-                f"title: {item.get('title', 'No title')} \n Content: {item.get('content', 'No content')} \n url: {item.get('url', '')}" 
+                f"title: {item.get('title', 'No title')} \n Content: {item.get('content', 'No content')} \n url: {item.get('url', '')}"
                 for item in result['results']
             ]
             return "\n\n".join(formatted_results) if formatted_results else "No result found"
@@ -111,22 +155,22 @@ def web_search_tool(query: str) -> str:
     except Exception as e:
         print(f"error in web_search_tool {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
-    
 
-def rag_search_tool(query: str,source_filter:str = None) -> str:
+
+def rag_search_tool(query: str, source_filter: str = None) -> str:
     """Advanced RAG pipeline featuring Multi-Query expansion, metadata filtering, and Cross-Encoder reranking.
     """
     try:
         expanded_queries = _generate_multi_queries(query)
-        candidate_pool:Dict[str,Dict[str,Any]] = {}
-        
+        candidate_pool: Dict[str, Dict[str, Any]] = {}
+
         filter_expression = {}
         if source_filter:
-            filter_expression["source"] = {"$eq":source_filter}
-        
+            filter_expression["source"] = {"$eq": source_filter}
+
         for q in expanded_queries:
-            query_vector =  embeddings.embed_query(q)
-            
+            query_vector = embeddings.embed_query(q)
+
             result = index.query(
                 vector=query_vector,
                 top_k=20,
@@ -138,7 +182,7 @@ def rag_search_tool(query: str,source_filter:str = None) -> str:
                     if match.id not in candidate_pool:
                         candidate_pool[match.id] = {
                             "id": match.id,
-                            "text": match.metadata.get("text", ""), # Fixed: Match your ingestion key
+                            "text": match.metadata.get("text", ""),
                             "code_solution": match.metadata.get("code_solution", ""),
                             "source": match.metadata.get("source", "Unknown Source"),
                             "token_count": match.metadata.get("token_count", 0),
@@ -146,13 +190,13 @@ def rag_search_tool(query: str,source_filter:str = None) -> str:
                         }
         if not candidate_pool:
             return []
-        
+
         candidates = list(candidate_pool.values())
-        
-        rerank_pairs = [[query,item["text"]] for item in candidates]
+
+        rerank_pairs = [[query, item["text"]] for item in candidates]
         scores = reranker.predict(rerank_pairs)
-        
-        for idx,score in enumerate(scores):
+
+        for idx, score in enumerate(scores):
             candidates[idx]["rerank_score"] = float(score)
         candidates.sort(key=lambda x: x["rerank_score"], reverse=True)
         elite_chunks = candidates[:3]
@@ -179,116 +223,158 @@ def build_agent_graph(model_name: str):
     """
     Initializes LLMs and compiles the LangGraph based on the requested model.
     """
-    router_llm = ChatGroq(model=model_name).with_structured_output(RouteDecision)
-    judge_llm = ChatGroq(model=model_name).with_structured_output(RagJudge)
-    answer_llm = ChatGroq(model=model_name)
-    language_checking_llm = ChatGroq(model=model_name).with_structured_output(CheckLanguage)
-    fast_llm = ChatGroq(model="llama-3.1-8b-instant")
+    router_llm = ChatGroq(model=model_name, temperature=0).with_structured_output(RouteDecision)
+    judge_llm = ChatGroq(model=model_name, temperature=0).with_structured_output(RagJudge)
+    answer_llm = ChatGroq(model=model_name, temperature=0.2, max_tokens=1024)
+    language_checking_llm = ChatGroq(model=model_name, temperature=0).with_structured_output(CheckLanguage)
+    fast_llm = ChatGroq(model="llama-3.1-8b-instant", temperature=0)
 
-    
     def language_checking_node(state: AgentState) -> AgentState:
+        history_block = (
+            f"\n\nConversation history (use ONLY to disambiguate a short, ambiguous follow-up; "
+            f"never use it to justify a clearly new, unrelated topic):\n{state['conversational_summary']}"
+            if state.get("conversational_summary") else ""
+        )
         messages = [
-            SystemMessage(content=("You are a strict classifier. Determine if the user's query is about Python. "
-                                   "Respond ONLY with JSON: { \"isPython\": true } or { \"isPython\": false }.")),
-            HumanMessage(content=f"Check if this query is related to Python:\n{state['query']}")
+            SystemMessage(content=(
+                "You are a strict binary classifier for a Python-only coding assistant.\n"
+                "Decide whether the CURRENT query is something a Python coding assistant should answer: "
+                "it concerns the Python programming language, its standard library, or a Python-ecosystem "
+                "framework/tool (e.g. Django, FastAPI, Pandas, NumPy, pytest) — OR it is a short, "
+                "self-incomplete follow-up (e.g. 'what about for CSV files?', 'can you show an example?') "
+                "that only makes sense in light of a prior Python discussion in the history.\n\n"
+                "If the current query introduces a new, self-contained topic unrelated to Python or "
+                "programming (general knowledge, geography, history, small talk, etc.), it is isPython: "
+                "false — even if the conversation history was about Python. Earlier Python discussion "
+                "never makes an unrelated new question Python-related.\n\n"
+                "Examples:\n"
+                "- History about pandas CSV parsing; query 'what about excel files?' -> true (follow-up)\n"
+                "- History about pandas CSV parsing; query 'do you know about the Himalayas?' -> false (new, unrelated topic)\n"
+                "- No history; query 'hello' -> false\n"
+                "- No history; query 'how do I reverse a list?' -> true"
+            )),
+            HumanMessage(content=f"Current query: {state['query']}{history_block}")
         ]
-        verdict = language_checking_llm.invoke(messages)
+        fallback = CheckLanguage(isPython=True)
+        verdict = _safe_structured_invoke(language_checking_llm, messages, fallback, "language_check")
         return {"isPython": verdict.isPython, "route": "answer"}
 
     def router_node(state: AgentState) -> AgentState:
-        message = [
-            ("system", (
-                "You are the core routing agent for a Python-focused AI assistant.\n"
-                "Analyze the user's query and route it to the correct node by strictly following these rules:\n\n"
-                
-                "ROUTE: 'rag'\n"
-                "- Use when the user asks for specific documentation, project architecture, or niche information that requires looking up an external Knowledge Base.\n\n"
-                
-                "ROUTE: 'answer'\n"
-                "- Use when the query is a general Python coding question (e.g., syntax, logic, standard libraries, debugging) that you can answer directly from your internal knowledge.\n\n"
-                
-                "ROUTE: 'end'\n"
-                "- Use ONLY for conversational pleasantries (e.g., 'hello', 'hi', 'thanks') OR if an out-of-scope/non-Python query somehow bypassed previous filters.\n"
-                "- CRITICAL: If you select 'end', you MUST populate the 'reply' field with an appropriate response (e.g., 'Hello! How can I help you with Python today?' or a polite rejection).\n"
-
-                "CRITICAL INSTRUCTIONS:\n"
-                "1. You MUST invoke the RouteDecision tool.\n"
-                "2. DO NOT output any conversational text, pleasantries, or explanations. Output ONLY the tool call.\n"
-                "3. The tool does NOT require a 'query' parameter."
-            )),
-            ("user", state["query"])
-        ]
-        result = router_llm.invoke(message)
-        out = {"result": "", "route": result.route}
-        
         if not state.get("isPython", True):
-            return {"result": result.reply or "Sorry, I only answer Python questions.", "route": "end"}
-        
+            return {"result": "Sorry, I only answer Python questions.", "route": "end"}
+
+        messages = [
+            SystemMessage(content=(
+                "You are the routing agent for a Python-only AI assistant. The query has already been "
+                "confirmed to be Python-related — do not re-evaluate that. Choose exactly ONE route:\n\n"
+                "- 'rag' (default/primary): any 'how to' request, debugging help, library usage "
+                "(Pandas, Django, FastAPI, etc.), project structure, or code generation. If uncertain, "
+                "choose 'rag'.\n"
+                "- 'answer': ONLY for basic conceptual definitions needing no code at all "
+                "(e.g. 'what is a variable?', 'define OOP').\n"
+                "- 'end': ONLY for pure pleasantries ('hello', 'thanks'). Must include a short 'reply'.\n\n"
+                "Set 'reply' to null unless route is 'end'. Do not add any field beyond route and reply."
+            )),
+            HumanMessage(content=state["query"])
+        ]
+        fallback = RouteDecision(route="rag", reply=None)
+        result = _safe_structured_invoke(router_llm, messages, fallback, "router")
+
         if result.route == "end":
-            out["result"] = result.reply or "Hello!"
-        return out
-    
+            return {"route": "end", "result": result.reply or "Hello!"}
+        return {"route": result.route, "result": ""}
+
     def rag_node(state: AgentState) -> AgentState:
         docs = rag_search_tool(state["query"]) if state['route'] == 'rag' else []
-        
         chunks_str = "\n\n".join([d["content"] for d in docs]) if docs else ""
-        
         sources = list(set([d["source"] for d in docs])) if docs else []
-        
+
+        if not chunks_str:
+            return {"rag": "", "rag_sources": [], "route": "web"}
+
         judge_message = [
-            SystemMessage(content="You are a judge evaluating if the retrieved information is sufficient."),
-            HumanMessage(content=f"Question: {state['query']}\n\nRetrieved info: {chunks_str}\n\nIs this sufficient?")
+            SystemMessage(content=(
+                "You are a strict, evidence-only judge. Decide whether the 'Retrieved info' below — and "
+                "ONLY that text — is enough to fully and accurately answer the question. Do not use "
+                "outside knowledge and do not fill in missing details yourself. If the retrieved info is "
+                "partial, tangential, or ambiguous, mark it insufficient."
+            )),
+            HumanMessage(content=f"Question: {state['query']}\n\nRetrieved info:\n{chunks_str}")
         ]
-        verdict = judge_llm.invoke(judge_message)
-        
+        fallback = RagJudge(sufficient=False)
+        verdict = _safe_structured_invoke(judge_llm, judge_message, fallback, "judge")
+
         return {
-            "rag": chunks_str, 
-            "rag_sources": sources, # Save the sources to state
+            "rag": chunks_str,
+            "rag_sources": sources,
             "route": "answer" if verdict.sufficient else "web"
         }
-    
+
     def web_node(state: AgentState) -> AgentState:
         snippet = web_search_tool(state["query"])
         return {"web": snippet, "route": "answer"}
-    
+
     def summarizeHistory(state: AgentState) -> AgentState:
         ctx = state.get("context_str", "")
         if not ctx:
             return {"conversational_summary": ""}
-            
+
         try:
             if len(ctx) < 400000:
-                prompt = [
-                    ("system", "Extract primary problem, solution, constraints. Use bullets. Remove filler."),
-                    ("human", "Summarize:\n\n{conversation}")
-                ]
+                system_prompt = (
+                    "You compress a chat history into a factual briefing for another AI assistant that "
+                    "will continue the conversation. Extract only what is needed to continue correctly:\n"
+                    "- The user's primary problem or goal\n"
+                    "- Any solution, code, or approach already given\n"
+                    "- Constraints, preferences, or corrections the user stated\n"
+                    "Use short bullet points. Do not add opinions, conclusions, or any detail that was "
+                    "not actually present in the conversation."
+                )
             else:
-                prompt = [
-                    ("system", "Maximum compression. Output ONLY architectural conclusions. Max 4 sentences."),
-                    ("human", "Compress:\n\n{conversation}")
-                ]
-            
-            summary_prompt = ChatPromptTemplate.from_messages(prompt)
+                system_prompt = (
+                    "You compress a long chat history into the smallest possible factual briefing. "
+                    "Output ONLY the final architectural/technical conclusions reached, as plain "
+                    "statements grounded in the conversation. Maximum 4 sentences. No preamble, no "
+                    "filler, nothing that wasn't actually stated."
+                )
+
+            summary_prompt = ChatPromptTemplate.from_messages([
+                ("system", system_prompt),
+                ("human", "Conversation history:\n\n{conversation}")
+            ])
             summarize_chain = summary_prompt | fast_llm | StrOutputParser()
             summary = summarize_chain.invoke({"conversation": ctx})
-            return {"conversational_summary": summary} 
+            return {"conversational_summary": summary}
         except Exception as e:
-            print(f"Error in summarizeHistory: {e}")
-            return {"conversational_summary": ""} 
-    
+            print(f"[summarize_warning] {e}")
+            return {"conversational_summary": ""}
+
     def answer_node(state: AgentState) -> AgentState:
-        ctx_part = []
         if not state.get("isPython", True):
             return {"result": "Sorry, I only answer Python questions."}
 
-        if state.get("rag"): ctx_part.append("Knowledge Base: \n" + state["rag"])
-        if state.get("web"): ctx_part.append("Web Results: \n" + state["web"])
-        if state.get("conversational_summary"): ctx_part.append("History: \n" + state["conversational_summary"])
-        
-        context = "\n\n".join(ctx_part) if ctx_part else "No context available"
-        prompt = f"Answer using context.\nQuestion:{state['query']}\nContext:{context}\nAnswer ONLY Python questions."
-        
-        ans = answer_llm.invoke([HumanMessage(content=prompt)]).content
+        ctx_part = []
+        if state.get("rag"):
+            ctx_part.append("Knowledge Base:\n" + state["rag"])
+        if state.get("web"):
+            ctx_part.append("Web Results:\n" + state["web"])
+        if state.get("conversational_summary"):
+            ctx_part.append("Prior Conversation:\n" + state["conversational_summary"])
+        context = "\n\n".join(ctx_part) if ctx_part else "No supporting context was retrieved."
+
+        messages = [
+            SystemMessage(content=(
+                "You are a precise Python coding assistant. Only answer questions about Python, its "
+                "standard library, or Python-ecosystem frameworks/tools. If the question is clearly about "
+                "an unrelated topic (general knowledge, geography, history, etc.), reply exactly: "
+                "\"Sorry, I only answer Python questions.\" and nothing else — regardless of what the "
+                "provided context contains. Otherwise, prefer the provided context when it is relevant. "
+                f"{GROUNDING_RULE} If the context is missing or insufficient, answer from well-established "
+                "Python knowledge only, and say so if you're not fully certain."
+            )),
+            HumanMessage(content=f"Question: {state['query']}\n\nContext:\n{context}")
+        ]
+        ans = answer_llm.invoke(messages).content
         return {"result": ans}
 
     def check_summary_needed(state: AgentState) -> Literal["Yes", "No"]:
@@ -302,9 +388,9 @@ def build_agent_graph(model_name: str):
     g.add_node("answer", answer_node)
     g.add_node("summarize", summarizeHistory)
 
-    g.add_edge(START, "check_language")
-    g.add_conditional_edges("check_language", check_summary_needed, {"No": "router", "Yes": "summarize"})
-    g.add_edge("summarize", "router")
+    g.add_conditional_edges(START, check_summary_needed, {"No": "check_language", "Yes": "summarize"})
+    g.add_edge("summarize", "check_language")
+    g.add_edge("check_language", "router")
     g.add_conditional_edges("router", lambda s: s['route'], {"rag": "rag_lookup", "answer": "answer", "end": END})
     g.add_conditional_edges("rag_lookup", lambda s: s['route'], {"answer": "answer", "web": "web_search"})
     g.add_edge("web_search", "answer")
@@ -315,25 +401,27 @@ def build_agent_graph(model_name: str):
 
 agent_cache = {}
 
+
 def get_cached_agent(model_name: str):
     if model_name not in agent_cache:
         print(f"Compiling graph for model: {model_name}...")
         agent_cache[model_name] = build_agent_graph(model_name)
     return agent_cache[model_name]
 
+
 @app.post("/query")
 def aiBot(data: AIQuery):
     agent = get_cached_agent(data.model_name)
-    
+
     joined_context = "\n".join(data.context) if data.context else ""
-    
+
     initial_state = {
         "query": data.query,
         "context_str": joined_context
     }
-    
+
     result = agent.invoke(initial_state)
-    
+
     return {"response": result.get("result", "An error occurred."),
-            "rag_sources":result.get("rag_sources", [])
+            "rag_sources": result.get("rag_sources", [])
             }

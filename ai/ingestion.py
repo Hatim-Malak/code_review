@@ -109,22 +109,22 @@ def _load_datasets() -> list[Chunk]:
    #       source="iamtarun_18k"
    #    ))
    
-   print("Loading flytech/python-codes-25k...")
-   flytech_ds = load_dataset("flytech/python-codes-25k", split="train")
+   # print("Loading flytech/python-codes-25k...")
+   # flytech_ds = load_dataset("flytech/python-codes-25k", split="train")
    
-   for idx, row in enumerate(flytech_ds):
-      search_text = f"{row['instruction']} {row['input']}".strip()
-      code_solution = row['output']
+   # for idx, row in enumerate(flytech_ds):
+   #    search_text = f"{row['instruction']} {row['input']}".strip()
+   #    code_solution = row['output']
         
-      chunk_hash = hashlib.md5(f"flytech_{idx}".encode()).hexdigest()[:8]
-      chunks.append(Chunk(
-            chunk_id = f"chunk_flytech_{idx:04d}_{chunk_hash}",
-            text= search_text,
-            chunk_index= idx,
-            token_count = len(search_text.split()),
-            code_solution =  code_solution,
-            source = "flytech_25k"
-      ))
+   #    chunk_hash = hashlib.md5(f"flytech_{idx}".encode()).hexdigest()[:8]
+   #    chunks.append(Chunk(
+   #          chunk_id = f"chunk_flytech_{idx:04d}_{chunk_hash}",
+   #          text= search_text,
+   #          chunk_index= idx,
+   #          token_count = len(search_text.split()),
+   #          code_solution =  code_solution,
+   #          source = "flytech_25k"
+   #    ))
 
    # print("Loading Qwen-59k-Python-Instruct (Web Frameworks)...")
    # web_ds = load_dataset("karti06k/Qwen-59k-Python-Instruct", split="train")
@@ -146,25 +146,25 @@ def _load_datasets() -> list[Chunk]:
    #       source = "qwen_web_frameworks"
    #    ))
    
-   # print("Loading ds-coder-instruct-v1 (Data Science)...")
-   # ds_dataset = load_dataset("ed001/ds-coder-instruct-v1", split="train")
+   print("Loading ds-coder-instruct-v1 (Data Science)...")
+   ds_dataset = load_dataset("ed001/ds-coder-instruct-v1", split="train")
     
-   # # Slice to respect free tier
-   # ds_subset = ds_dataset.select(range(min(MAX_DS_RECORD, len(ds_dataset))))
+   # Slice to respect free tier
+   ds_subset = ds_dataset.select(range(min(MAX_DS_RECORD, len(ds_dataset))))
     
-   # for idx, row in enumerate(ds_subset):
-   #    search_text = f"{row.get('instruction', '')} {row.get('input', '')}".strip()
-   #    code_solution = row.get('output', '')
+   for idx, row in enumerate(ds_subset):
+      search_text = f"{row.get('instruction', '')} {row.get('input', '')}".strip()
+      code_solution = row.get('output', '')
         
-   #    chunk_hash = hashlib.md5(f"ds_{idx}".encode()).hexdigest()[:8]
-   #    chunks.append(Chunk(
-   #       chunk_id = f"chunk_ds_{idx:04d}_{chunk_hash}",
-   #       text = search_text,
-   #       chunk_index = idx,
-   #       token_count = len(search_text.split()),
-   #       code_solution = code_solution,
-   #       source = "ds_coder_pandas"
-   #    ))
+      chunk_hash = hashlib.md5(f"ds_{idx}".encode()).hexdigest()[:8]
+      chunks.append(Chunk(
+         chunk_id = f"chunk_ds_{idx:04d}_{chunk_hash}",
+         text = search_text,
+         chunk_index = idx,
+         token_count = len(search_text.split()),
+         code_solution = code_solution,
+         source = "ds_coder_pandas"
+      ))
 
    print(f"Total advanced framework instructions ready: {len(chunks)}")
    return chunks
