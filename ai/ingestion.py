@@ -146,24 +146,46 @@ def _load_datasets() -> list[Chunk]:
    #       source = "qwen_web_frameworks"
    #    ))
    
-   print("Loading ds-coder-instruct-v1 (Data Science)...")
-   ds_dataset = load_dataset("ed001/ds-coder-instruct-v1", split="train")
+   # print("Loading ds-coder-instruct-v1 (Data Science)...")
+   # ds_dataset = load_dataset("ed001/ds-coder-instruct-v1", split="train")
     
-   # Slice to respect free tier
-   ds_subset = ds_dataset.select(range(min(MAX_DS_RECORD, len(ds_dataset))))
+   # # Slice to respect free tier
+   # ds_subset = ds_dataset.select(range(min(MAX_DS_RECORD, len(ds_dataset))))
     
-   for idx, row in enumerate(ds_subset):
-      search_text = f"{row.get('instruction', '')} {row.get('input', '')}".strip()
-      code_solution = row.get('output', '')
+   # for idx, row in enumerate(ds_subset):
+   #    search_text = f"{row.get('instruction', '')} {row.get('input', '')}".strip()
+   #    code_solution = row.get('output', '')
         
-      chunk_hash = hashlib.md5(f"ds_{idx}".encode()).hexdigest()[:8]
+   #    chunk_hash = hashlib.md5(f"ds_{idx}".encode()).hexdigest()[:8]
+   #    chunks.append(Chunk(
+   #       chunk_id = f"chunk_ds_{idx:04d}_{chunk_hash}",
+   #       text = search_text,
+   #       chunk_index = idx,
+   #       token_count = len(search_text.split()),
+   #       code_solution = code_solution,
+   #       source = "ds_coder_pandas"
+   #    ))
+   
+   print("Loading ammarnasr/Python-Security-Code-Dataset (Cybersecurity)...")
+   sec_dataset = load_dataset("ammarnasr/Python-Security-Code-Dataset", split="train")
+      
+   MAX_SEC_RECORDS = 5000
+   sec_subset = sec_dataset.select(range(min(MAX_SEC_RECORDS, len(sec_dataset))))
+   
+   for idx, row in enumerate(sec_subset):
+      snippet = row.get('text', '').strip()
+      
+      if not snippet:
+            continue
+            
+      chunk_hash = hashlib.md5(f"sec_{idx}".encode()).hexdigest()[:8]
       chunks.append(Chunk(
-         chunk_id = f"chunk_ds_{idx:04d}_{chunk_hash}",
-         text = search_text,
-         chunk_index = idx,
-         token_count = len(search_text.split()),
-         code_solution = code_solution,
-         source = "ds_coder_pandas"
+            chunk_id = f"chunk_sec_{idx:04d}_{chunk_hash}",
+            text = snippet,               
+            chunk_index = idx,
+            token_count = len(snippet.split()),
+            code_solution = snippet,      
+            source = "ammarnasr_security"
       ))
 
    print(f"Total advanced framework instructions ready: {len(chunks)}")
