@@ -168,7 +168,7 @@ def _load_datasets() -> list[Chunk]:
    
    print("Loading ammarnasr/Python-Security-Code-Dataset (Cybersecurity)...")
    sec_dataset = load_dataset("ammarnasr/Python-Security-Code-Dataset", split="train")
-      
+        
    MAX_SEC_RECORDS = 5000
    sec_subset = sec_dataset.select(range(min(MAX_SEC_RECORDS, len(sec_dataset))))
    
@@ -178,13 +178,18 @@ def _load_datasets() -> list[Chunk]:
       if not snippet:
             continue
             
+      # THE FIX: Truncate the search text to ~4000 characters so the API doesn't hang.
+      # BGE-M3 is smart enough to capture the semantic meaning in the first 4000 chars.
+      # We still keep the full snippet in the code_solution for the LLM.
+      safe_search_text = snippet[:4000] 
+            
       chunk_hash = hashlib.md5(f"sec_{idx}".encode()).hexdigest()[:8]
       chunks.append(Chunk(
             chunk_id = f"chunk_sec_{idx:04d}_{chunk_hash}",
-            text = snippet,               
+            text = safe_search_text,      # Truncated string sent to Hugging Face
             chunk_index = idx,
             token_count = len(snippet.split()),
-            code_solution = snippet,      
+            code_solution = snippet,      # Full string saved in Pinecone metadata
             source = "ammarnasr_security"
       ))
 
