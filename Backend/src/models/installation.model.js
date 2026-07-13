@@ -9,7 +9,7 @@ const installationSchema = new mongoose.Schema(
         },
         accountLogin:{
             type:String,
-            require:true,
+            required:true,
         },
         accountType:{
             type:String,
