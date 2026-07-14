@@ -11,12 +11,12 @@ const SKIP_PATTERNS = [
 
 export async function fetchRepoFiles(octokit, owner, repo, ref) {
   const { url } = await octokit.rest.repos.downloadTarballArchive({ owner, repo, ref });
-  const res = await fetch(url); // downloadTarballArchive returns a redirect URL; fetch follows it
+  const res = await fetch(url); 
   const files = [];
 
   const extract = tar.extract();
   extract.on("entry", (header, stream, next) => {
-    const relativePath = header.name.split("/").slice(1).join("/"); // strip the "<repo>-<sha>/" prefix
+    const relativePath = header.name.split("/").slice(1).join("/"); 
     const skip =
       header.type !== "file" ||
       header.size > MAX_FILE_BYTES ||
