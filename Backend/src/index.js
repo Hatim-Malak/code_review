@@ -4,6 +4,8 @@ import cookieParser from "cookie-parser";
 import cors from "cors";
 import authRoutes from "./routes/auth.route.js";
 import chatRoutes from "./routes/chat.route.js";
+import githubRoutes from "./routes/github.route.js";
+import repoRoutes from "./routes/repo.route.js";
 import { connectdb } from "./lib/db.js";
 import { Server } from "socket.io";
 import { createServer } from "http";
@@ -13,14 +15,13 @@ dotenv.config();
 const allowedOrigins = [
   "http://localhost:5173", //for development
   "https://starlit-stationary-frontend.vercel.app",
-  "http://127.0.0.1:8000",
 ];
 
 app.use(cookieParser());
 app.use(
   cors({
     origin: (origin, callback) => {
-      if (!origin) return callback(null, true); // allow non-browser tools like Postman
+      if (!origin) return callback(null, true); // allow non-browser tools like Postman, and GitHub's webhook (no Origin header)
       if (allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
@@ -56,10 +57,17 @@ io.on("connection", (socket) => {
 
 const PORT = process.env.PORT;
 
+// IMPORTANT: mounted before express.json(). This route needs the raw request
+// body untouched to verify GitHub's HMAC signature — its own router applies
+// express.raw() internally. If the global json() parser ran first, it would
+// already have consumed and parsed the body, leaving nothing for raw() to read.
+app.use("/api/github", githubRoutes);
+
 app.use(express.json({ limit: "5mb" }));
-app.use(express.json());
 app.use("/api/auth", authRoutes);
 app.use("/api/chat", chatRoutes);
+app.use("/api/repos", repoRoutes);
+
 server.listen(PORT, () => {
   console.log("The server is running on the port ", PORT);
   connectdb();
