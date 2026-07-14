@@ -557,3 +557,74 @@ def reindex_repo(data: ReindexRequest):
     except Exception as e:
         print(f"error in /reindex {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
+    
+review_llm_cache: dict[str, Any] = {}
+
+
+def get_review_llm(model_name: str):
+    if model_name not in review_llm_cache:
+        review_llm_cache[model_name] = ChatGroq(model=model_name, temperature=0).with_structured_output(HunkReview)
+    return review_llm_cache[model_name]
+
+
+def _review_rag_search(query: str, repo_namespace: str) -> list[dict]:
+    """Grounds a finding in two sources at once: the repo's own indexed code
+    and the general knowledge base, merged before reranking."""
+    repo_candidates = _rag_candidates(query, namespace=repo_namespace)
+    general_candidates = _rag_candidates(query, namespace=None)
+    merged = {**general_candidates, **repo_candidates}
+    return _rerank(query, list(merged.values()), top_n=3)
+
+
+def _review_hunk(model_name: str, filename: str, hunk_text: str, context_chunks: list[dict]) -> HunkReview:
+    context_str = "\n\n".join(f"[{c['source']}] {c['text']}" for c in context_chunks) \
+        if context_chunks else "No related context was retrieved."
+
+    messages = [
+        SystemMessage(content=(
+            "You are a precise, conservative code reviewer. You are given one hunk (a contiguous block "
+            "of changes) from a pull request diff, plus retrieved context from the project's own codebase "
+            "and general best-practice knowledge. Flag an issue ONLY if it is specific and grounded in the "
+            f"diff or the given context — never invent a problem to have something to say. {GROUNDING_RULE}"
+        )),
+        HumanMessage(content=f"File: {filename}\n\nDiff hunk:\n{hunk_text}\n\nRetrieved context:\n{context_str}")
+    ]
+    fallback = HunkReview(has_issue=False, severity="info", comment="")
+    return _safe_structured_invoke(get_review_llm(model_name), messages, fallback, "hunk_review")
+
+
+MAX_HUNKS_PER_REVIEW = 40
+
+
+@app.post("/review", response_model=ReviewResult)
+def review_pr(data: ReviewRequest):
+    all_findings: list[ReviewFinding] = []
+    all_sources: set[str] = set()
+    hunks_processed = 0
+
+    for file in data.files:
+        if hunks_processed >= MAX_HUNKS_PER_REVIEW:
+            break
+        for hunk in _split_patch_into_hunks(file.patch):
+            if hunks_processed >= MAX_HUNKS_PER_REVIEW:
+                break
+            hunks_processed += 1
+
+            query = f"Review this change in {file.filename}:\n{hunk['text']}"
+            context_chunks = _review_rag_search(query, repo_namespace=data.namespace)
+            review = _review_hunk(data.model_name, file.filename, hunk["text"], context_chunks)
+
+            if not review.has_issue:
+                continue
+
+            all_findings.append(ReviewFinding(
+                file=file.filename,
+                startLine=hunk["start_line"],
+                endLine=hunk["end_line"],
+                severity=review.severity,
+                comment=review.comment,
+                suggestedFix=review.suggested_fix,
+            ))
+            all_sources.update(c["source"] for c in context_chunks)
+
+    return ReviewResult(findings=all_findings, rag_sources=list(all_sources))
