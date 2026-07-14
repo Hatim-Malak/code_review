@@ -276,15 +276,101 @@ def _retrival_argument_generation():
    
    return summary
 
-def ingest_repo_files(
-   repo_full_name:str,
-   namespace:str,
-   files:list[dict],
-   index,
-   embed_fn,
-):
-   """Chunk and embed a repo's own source files into their dedicated namespace."""
-   pass
+def _chunk_by_lines(content: str, max_lines: int = 60, overlap: int = 10) -> list[str]:
+    """Split file content into overlapping line-based windows.
+
+    A sliding window over lines rather than tokens or an AST — fast,
+    language-agnostic, and good enough for embedding-based retrieval.
+    The overlap keeps something like a function signature that falls
+    right at a chunk boundary from getting split away from its body.
+    """
+    lines = content.splitlines()
+    if not lines:
+        return []
+
+    if len(lines) <= max_lines:
+        return ["\n".join(lines)]
+
+    if overlap >= max_lines:
+        raise ValueError("overlap must be smaller than max_lines")
+
+    chunks = []
+    step = max_lines - overlap
+    for start in range(0, len(lines), step):
+        window = lines[start : start + max_lines]
+        if not window:
+            break
+        chunks.append("\n".join(window))
+        if start + max_lines >= len(lines):
+            break
+
+    return chunks
+
+
+def _batched(items: list, size: int):
+    """Yield successive size-sized batches from items."""
+    for i in range(0, len(items), size):
+        yield items[i : i + size]
+    
+def _delete_by_metadata(index, namespace: str, file_path: str, repo_full_name: str):
+    """Serverless indexes can't delete by metadata filter directly, so this
+    queries for matching ids first, then deletes by id."""
+    result = index.query(
+        vector=[0.0] * EMBED_DIM,
+        top_k=1000,
+        include_metadata=False,
+        filter={"file_path": {"$eq": file_path}, "repo": {"$eq": repo_full_name}},
+        namespace=namespace,
+    )
+    ids = [m.id for m in result.matches] if result and result.matches else []
+    if ids:
+        index.delete(ids=ids, namespace=namespace)
+
+def ingest_repo_files(repo_full_name: str, namespace: str, files: list[dict], index, embed_fn) -> int:
+    """Chunk and embed a repo's own source files into their dedicated namespace."""
+    chunks = []
+    for f in files:
+        for i, window in enumerate(_chunk_by_lines(f["content"], max_lines=60, overlap=10)):
+            chunks.append({
+                "id": f"{repo_full_name}:{f['path']}:{i}",
+                "text": window,
+                "metadata": {
+                    "file_path": f["path"],
+                    "repo": repo_full_name,
+                    "source": "repo_source",
+                    "chunk_index": i,
+                },
+            })
+
+    total = 0
+    for batch in _batched(chunks, size=64):
+        vectors = embed_fn([c["text"] for c in batch])
+        index.upsert(
+            vectors=[
+                {"id": c["id"], "values": v, "metadata": {**c["metadata"], "text": c["text"]}}
+                for c, v in zip(batch, vectors)
+            ],
+            namespace=namespace,
+        )
+        total += len(batch)
+    return total
+
+
+def reindex_repo_files(
+    repo_full_name: str,
+    namespace: str,
+    files: list[dict],        # already-fetched [{"path", "content"}] from the caller
+    removed_paths: list[str],
+    index,
+    embed_fn,
+) -> int:
+    """Drop stale vectors for anything changed or removed, then re-embed the
+    changed files. No fetching happens in here — content arrives pre-fetched."""
+    stale_paths = set(removed_paths) | {f["path"] for f in files}
+    for path in stale_paths:
+        _delete_by_metadata(index, namespace, path, repo_full_name)
+
+    return ingest_repo_files(repo_full_name, namespace, files, index, embed_fn) if files else 0
 
 if __name__ == "__main__":
    summary = _retrival_argument_generation()

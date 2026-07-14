@@ -15,6 +15,8 @@ from langchain_core.tools import tool
 from langchain_core.prompts import ChatPromptTemplate
 from typing_extensions import TypedDict
 from langchain_core.output_parsers import StrOutputParser
+import re
+from ingestion import ingest_repo_files,reindex_repo_files
 
 load_dotenv()
 
@@ -157,63 +159,71 @@ def web_search_tool(query: str) -> str:
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-def rag_search_tool(query: str, source_filter: str = None) -> str:
-    """Advanced RAG pipeline featuring Multi-Query expansion, metadata filtering, and Cross-Encoder reranking.
-    """
+def _rag_candidates(query: str, source_filter: str = None, namespace: str = None) -> Dict[str, Dict[str, Any]]:
+    """Multi-query expansion + Pinecone retrieval, before reranking. Shared by
+    the chat RAG path and the repo-review path so both benefit from the same
+    query expansion and de-duplication logic."""
+    expanded_queries = _generate_multi_queries(query)
+    candidate_pool: Dict[str, Dict[str, Any]] = {}
+
+    filter_expression = {}
+    if source_filter:
+        filter_expression["source"] = {"$eq": source_filter}
+
+    for q in expanded_queries:
+        query_vector = embeddings.embed_query(q)
+        result = index.query(
+            vector=query_vector,
+            top_k=20,
+            include_metadata=True,
+            filter=filter_expression if filter_expression else None,
+            namespace=namespace or "",
+        )
+        if result and result.matches:
+            for match in result.matches:
+                if match.id not in candidate_pool:
+                    candidate_pool[match.id] = {
+                        "id": match.id,
+                        "text": match.metadata.get("text", ""),
+                        "code_solution": match.metadata.get("code_solution", ""),
+                        "source": match.metadata.get("source", "Unknown Source"),
+                        "token_count": match.metadata.get("token_count", 0),
+                        "chunk_index": match.metadata.get("chunk_index", 0),
+                    }
+    return candidate_pool
+
+
+def _rerank(query: str, candidates: list[dict], top_n: int = 3) -> list[dict]:
+    if not candidates:
+        return []
+    rerank_pairs = [[query, item["text"]] for item in candidates]
+    scores = reranker.predict(rerank_pairs)
+    for idx, score in enumerate(scores):
+        candidates[idx]["rerank_score"] = float(score)
+    candidates.sort(key=lambda x: x["rerank_score"], reverse=True)
+    return candidates[:top_n]
+
+
+def rag_search_tool(query: str, source_filter: str = None, namespace: str = None) -> list:
+    """Advanced RAG pipeline featuring Multi-Query expansion, metadata filtering, and Cross-Encoder reranking."""
     try:
-        expanded_queries = _generate_multi_queries(query)
-        candidate_pool: Dict[str, Dict[str, Any]] = {}
-
-        filter_expression = {}
-        if source_filter:
-            filter_expression["source"] = {"$eq": source_filter}
-
-        for q in expanded_queries:
-            query_vector = embeddings.embed_query(q)
-
-            result = index.query(
-                vector=query_vector,
-                top_k=20,
-                include_metadata=True,
-                filter=filter_expression if filter_expression else None
-            )
-            if result and result.matches:
-                for match in result.matches:
-                    if match.id not in candidate_pool:
-                        candidate_pool[match.id] = {
-                            "id": match.id,
-                            "text": match.metadata.get("text", ""),
-                            "code_solution": match.metadata.get("code_solution", ""),
-                            "source": match.metadata.get("source", "Unknown Source"),
-                            "token_count": match.metadata.get("token_count", 0),
-                            "chunk_index": match.metadata.get("chunk_index", 0)
-                        }
+        candidate_pool = _rag_candidates(query, source_filter=source_filter, namespace=namespace)
         if not candidate_pool:
             return []
 
-        candidates = list(candidate_pool.values())
-
-        rerank_pairs = [[query, item["text"]] for item in candidates]
-        scores = reranker.predict(rerank_pairs)
-
-        for idx, score in enumerate(scores):
-            candidates[idx]["rerank_score"] = float(score)
-        candidates.sort(key=lambda x: x["rerank_score"], reverse=True)
-        elite_chunks = candidates[:3]
-        formatted_results = [
+        elite_chunks = _rerank(query, list(candidate_pool.values()), top_n=3)
+        return [
             {
                 "content": f"Context:\n{chunk['text']}\n\nSolution/Code:\n{chunk['code_solution']}",
                 "source": chunk["source"],
                 "metadata": {
                     "chunk_index": chunk["chunk_index"],
                     "token_count": chunk["token_count"],
-                    "relevance_score": chunk["rerank_score"]
-                }
+                    "relevance_score": chunk["rerank_score"],
+                },
             }
             for chunk in elite_chunks
         ]
-
-        return formatted_results
     except Exception as e:
         print(f"error in rag_search_tool {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -425,3 +435,125 @@ def aiBot(data: AIQuery):
     return {"response": result.get("result", "An error occurred."),
             "rag_sources": result.get("rag_sources", [])
             }
+
+class RepoFile(BaseModel):
+    path: str
+    content: str
+
+
+class IndexRequest(BaseModel):
+    namespace: str
+    repo_full_name: str
+    files: list[RepoFile]
+
+
+class ReindexRequest(IndexRequest):
+    removed_paths: list[str] = []
+
+
+class DiffFile(BaseModel):
+    filename: str
+    patch: str | None = None
+    status: str | None = None
+
+
+class ReviewRequest(BaseModel):
+    namespace: str
+    repo_full_name: str
+    files: list[DiffFile]
+    model_name: str = "llama-3.1-8b-instant"
+
+
+class ReviewFinding(BaseModel):
+    file: str
+    startLine: int
+    endLine: int
+    severity: Literal["info", "warning", "error"]
+    comment: str
+    suggestedFix: str | None = None
+
+
+class ReviewResult(BaseModel):
+    findings: list[ReviewFinding]
+    rag_sources: list[str]
+
+
+class HunkReview(BaseModel):
+    has_issue: bool = Field(
+        ...,
+        description="True only if this hunk has a genuine, specific problem worth flagging — a bug, "
+                    "security issue, or a clear deviation from the patterns shown in context. False for "
+                    "clean, unremarkable changes; do not invent issues to have something to say."
+    )
+    severity: Literal["info", "warning", "error"] = Field(
+        default="info",
+        description="'error' for bugs or security issues, 'warning' for risky-but-not-broken patterns, "
+                    "'info' for minor style notes. Irrelevant if has_issue is False."
+    )
+    comment: str = Field(
+        default="",
+        description="A short, specific explanation grounded in the given context. Empty if has_issue is False."
+    )
+    suggested_fix: str | None = Field(
+        None, description="A brief concrete fix suggestion, or null if none applies."
+    )
+
+HUNK_HEADER_RE = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@")
+
+
+def _split_patch_into_hunks(patch: str) -> list[dict]:
+    if not patch:
+        return []
+
+    hunks = []
+    current_lines: list[str] = []
+    current_start = None
+    current_len = 1
+
+    for line in patch.splitlines():
+        match = HUNK_HEADER_RE.match(line)
+        if match:
+            if current_start is not None:
+                hunks.append({
+                    "text": "\n".join(current_lines),
+                    "start_line": current_start,
+                    "end_line": current_start + current_len - 1,
+                })
+            current_lines = [line]
+            current_start = int(match.group(1))
+            current_len = int(match.group(2) or 1)
+        else:
+            current_lines.append(line)
+
+    if current_start is not None:
+        hunks.append({
+            "text": "\n".join(current_lines),
+            "start_line": current_start,
+            "end_line": current_start + current_len - 1,
+        })
+
+    return hunks
+
+@app.post("/index")
+def index_repo(data: IndexRequest):
+    try:
+        files = [f.dict() for f in data.files]
+        count = ingest_repo_files(data.repo_full_name, data.namespace, files, index, embeddings.embed_documents)
+        return {"indexed": count}
+    except Exception as e:
+        print(f"error in /index {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@app.post("/reindex")
+def reindex_repo(data: ReindexRequest):
+    try:
+        files = [f.dict() for f in data.files]
+        count = reindex_repo_files(
+            data.repo_full_name, data.namespace, files, data.removed_paths,
+            index, embeddings.embed_documents,
+        )
+        return {"reindexed": count, "removed": len(data.removed_paths)}
+    except Exception as e:
+        print(f"error in /reindex {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
