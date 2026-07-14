@@ -187,6 +187,7 @@ def _rag_candidates(query: str, source_filter: str = None, namespace: str = None
                         "text": match.metadata.get("text", ""),
                         "code_solution": match.metadata.get("code_solution", ""),
                         "source": match.metadata.get("source", "Unknown Source"),
+                        "file_path": match.metadata.get("file_path", ""),
                         "token_count": match.metadata.get("token_count", 0),
                         "chunk_index": match.metadata.get("chunk_index", 0),
                     }
@@ -577,8 +578,9 @@ def _review_rag_search(query: str, repo_namespace: str) -> list[dict]:
 
 
 def _review_hunk(model_name: str, filename: str, hunk_text: str, context_chunks: list[dict]) -> HunkReview:
-    context_str = "\n\n".join(f"[{c['source']}] {c['text']}" for c in context_chunks) \
-        if context_chunks else "No related context was retrieved."
+    context_str = "\n\n".join(
+        f"[{c.get('file_path') or c['source']}] {c['text']}" for c in context_chunks
+    ) if context_chunks else "No related context was retrieved."
 
     messages = [
         SystemMessage(content=(
@@ -625,6 +627,6 @@ def review_pr(data: ReviewRequest):
                 comment=review.comment,
                 suggestedFix=review.suggested_fix,
             ))
-            all_sources.update(c["source"] for c in context_chunks)
+            all_sources.update(c.get("file_path") or c["source"] for c in context_chunks)
 
     return ReviewResult(findings=all_findings, rag_sources=list(all_sources))
