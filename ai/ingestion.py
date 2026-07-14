@@ -276,6 +276,16 @@ def _retrival_argument_generation():
    
    return summary
 
+def ingest_repo_files(
+   repo_full_name:str,
+   namespace:str,
+   files:list[dict],
+   index,
+   embed_fn,
+):
+   """Chunk and embed a repo's own source files into their dedicated namespace."""
+   pass
+
 if __name__ == "__main__":
    summary = _retrival_argument_generation()
    
