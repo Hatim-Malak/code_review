@@ -54,7 +54,8 @@ const AboutPage = () => {
     ...(authUser
       ? [
           { label: "Chat", href: "/chat" },
-          { label: "Logout", href: "#", onClick: logout }
+          { label: "Reviews", href: "/reviews" },
+          { label: "Logout", href: "#", onClick: logout },
         ]
       : [
           { label: "Login", href: "/login" },

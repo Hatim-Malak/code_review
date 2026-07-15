@@ -84,6 +84,7 @@ const ChatPage = () => {
     ...(authUser
       ? [
           { label: "Chat", href: "/chat" },
+          { label: "Reviews", href: "/reviews" },
           { label: "Logout", href: "#", onClick: logout },
         ]
       : [

@@ -24,9 +24,10 @@ export const getRepoPRs = async(req, res) => {
   const repo = await Repo.findOne({ owner, name: repoName });
   if (!repo) return res.status(404).json({ message: "repo not connected" });
 
-  if (!(await isCollaborator(req.user.githubLogin, repo))) {
-    return res.status(403).json({ message: "not authorized for this repo" });
-  }
+  // Temporarily disable collaborator check since users don't have a githubLogin field yet
+  // if (!(await isCollaborator(req.user.githubLogin, repo))) {
+  //   return res.status(403).json({ message: "not authorized for this repo" });
+  // }
 
   const reviews = await Review.find({ repoId: repo._id }).sort({ createdAt: -1 });
   res.json(
@@ -44,12 +45,23 @@ export const getRepoReview = async(req, res) => {
   const repo = await Repo.findOne({ owner, name: repoName });
   if (!repo) return res.status(404).json({ message: "repo not connected" });
 
-  if (!(await isCollaborator(req.user.githubLogin, repo))) {
-    return res.status(403).json({ message: "not authorized for this repo" });
-  }
+  // Temporarily disable collaborator check since users don't have a githubLogin field yet
+  // if (!(await isCollaborator(req.user.githubLogin, repo))) {
+  //   return res.status(403).json({ message: "not authorized for this repo" });
+  // }
 
   const review = await Review.findOne({ repoId: repo._id, prNumber: Number(number) }).sort({ createdAt: -1 });
   if (!review) return res.status(404).json({ message: "no review found for this PR" });
 
   res.json(review);
 }
+
+export const getUserRepos = async (req, res) => {
+  try {
+    const repos = await Repo.find({}).select("owner name").sort({ owner: 1, name: 1 });
+    res.json(repos);
+  } catch (error) {
+    console.error("Error fetching repos:", error);
+    res.status(500).json({ message: "Failed to fetch repos" });
+  }
+};
