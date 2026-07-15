@@ -1,7 +1,5 @@
-import {Queue} from "bullmq"
+import { Queue } from "bullmq";
+import { redisConnection } from "./redisConnection.js";
 
-const connection  = {url:process.env.REDIS_URL};
-
-export const reviewQueue = new Queue("review-pr",{connection});
-export const indexQueue = new Queue("index-repo",{connection});
-
+export const reviewQueue = new Queue("review-pr", { connection: redisConnection });
+export const indexQueue = new Queue("index-repo", { connection: redisConnection });

@@ -4,6 +4,7 @@ import axios from "axios";
 import { octokitForInstallation } from "../lib/githubAuth.js";
 import { fetchRepoFiles } from "../lib/repoTree.js";
 import Repo from "../models/repo.model.js";
+import { redisConnection } from "../lib/redisConnection.js";
 
 new Worker(
   "index-repo",
@@ -11,7 +12,7 @@ new Worker(
     if (job.name === "full-index") return handleFullIndex(job.data);
     if (job.name === "incremental-index") return handleIncrementalIndex(job.data);
   },
-  { connection: { url: process.env.REDIS_URL } }
+  { connection: redisConnection }
 );
 
 async function handleFullIndex({ repoId }) {

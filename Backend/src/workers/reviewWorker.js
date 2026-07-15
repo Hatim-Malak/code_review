@@ -4,6 +4,7 @@ import {octokitForInstallation} from "../lib/githubAuth.js"
 import Repo from "../models/repo.model.js"
 import Review from "../models/review.model.js"
 import { postCheckRun } from "../lib/githubChecks.js";
+import { redisConnection } from "../lib/redisConnection.js";
 
 new Worker(
     "review-pr",
@@ -37,7 +38,7 @@ new Worker(
 
         await postCheckRun(octokit,repo,headSha,{ status: "completed", findings: data.findings })
     },
-    {connection:{url:process.env.REDIS_URL}}
+    {connection:redisConnection}
 )
 
 function isGeneratedOrVendored(path) {

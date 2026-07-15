@@ -1,6 +1,9 @@
 import jwt from "jsonwebtoken"
 import { Octokit } from "@octokit/rest"
 import { createAppAuth} from "@octokit/auth-app"
+import dotenv from "dotenv"
+
+dotenv.config()
 
 const privateKey  = Buffer.from(process.env.GITHUB_APP_PRIVATE_KEY,"base64")
 

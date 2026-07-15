@@ -18,7 +18,7 @@ const verifySignature = (req) => {
 };
 
 export const handleWbhook = async (req, res) => {
-  if (!verifySignature) {
+  if (!verifySignature(req)) { 
     return res.status(401).json({ message: "invalid signature" });
   }
 
