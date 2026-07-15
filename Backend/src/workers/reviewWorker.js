@@ -24,7 +24,7 @@ new Worker(
             .filter((f)=> !isGeneratedOrVendored(f.filename))
             .map((f) => ({filename:f.filename,patch:f.patch,status:f.status}))
 
-        const review = await Review.create({repoId:repo._id,prNumber:headSha,status:"in_progress"})
+        const review = await Review.create({repoId:repo._id, prNumber, headSha, status:"in_progress"})
 
         const {data} = await axios.post(`${process.env.AI_SERVICES_URL}/review`,{
             namespace:repo.namespace,

@@ -9,6 +9,9 @@ import repoRoutes from "./routes/repo.route.js";
 import { connectdb } from "./lib/db.js";
 import { Server } from "socket.io";
 import { createServer } from "http";
+import SmeeClient from "smee-client";
+import "./workers/reviewWorker.js";
+import "./workers/indexedWorker.js";
 
 const app = express();
 dotenv.config();
@@ -71,4 +74,14 @@ app.use("/api/repos", repoRoutes);
 server.listen(PORT, () => {
   console.log("The server is running on the port ", PORT);
   connectdb();
+
+  // Start Smee webhook forwarder in development
+  if (process.env.NODE_ENV === "development") {
+    const smee = new SmeeClient({
+      source: "https://smee.io/JpNYi61dUBqjZCeh",
+      target: `http://localhost:${PORT}/api/github/webhook`,
+      logger: console
+    });
+    smee.start();
+  }
 });
