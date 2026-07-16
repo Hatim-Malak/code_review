@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { Menu, X, PanelLeftOpen } from "lucide-react";
 
-const CustomNavbar = ({ items, logo, className = "", onSidebarToggle }) => {
+const CustomNavbar = ({ items, logo, className = "", onSidebarToggle, dashboardMode = false }) => {
   const [isScrolled, setIsScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const location = useLocation();
@@ -17,7 +17,9 @@ const CustomNavbar = ({ items, logo, className = "", onSidebarToggle }) => {
 
   return (
     <header
-      className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
+      className={`fixed top-0 right-0 z-50 transition-all duration-300 ${
+        dashboardMode ? "md:left-72 left-0" : "left-0"
+      } ${
         isScrolled
           ? "bg-cream/80 backdrop-blur-md shadow-sm py-3"
           : "bg-transparent py-5"
@@ -35,7 +37,7 @@ const CustomNavbar = ({ items, logo, className = "", onSidebarToggle }) => {
             </button>
           )}
           {/* Logo */}
-          <Link to="/" className="flex items-center gap-2 group">
+          <Link to="/" className={`flex items-center gap-2 group ${dashboardMode ? "md:hidden" : ""}`}>
             <img 
               src={logo} 
               alt="Logo" 

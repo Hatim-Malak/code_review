@@ -22,6 +22,11 @@ const reviewSchema = new mongoose.Schema(
       required: true,
     },
     prNumber: Number,
+    prTitle: String,
+    prAuthor: {
+      name: String,
+      avatarUrl: String,
+    },
     headSha: String,
     status: {
       type: String,

@@ -31,12 +31,26 @@ export const getRepoPRs = async(req, res) => {
 
   const reviews = await Review.find({ repoId: repo._id }).sort({ createdAt: -1 });
   res.json(
-    reviews.map((r) => ({
-      prNumber: r.prNumber,
-      status: r.status,
-      findingCount: r.findings.length,
-      hasBlocking: r.findings.some((f) => f.severity === "error"),
-    }))
+    reviews.map((r) => {
+      const errorCount = r.findings.filter(f => f.severity === 'error').length;
+      const warningCount = r.findings.filter(f => f.severity === 'warning').length;
+      const infoCount = r.findings.filter(f => f.severity === 'info').length;
+
+      return {
+        prNumber: r.prNumber,
+        prTitle: r.prTitle,
+        prAuthor: r.prAuthor,
+        createdAt: r.createdAt,
+        status: r.status,
+        findingCount: r.findings.length,
+        hasBlocking: errorCount > 0,
+        severityBreakdown: {
+          error: errorCount,
+          warning: warningCount,
+          info: infoCount,
+        }
+      };
+    })
   );
 }
 
@@ -58,8 +72,43 @@ export const getRepoReview = async(req, res) => {
 
 export const getUserRepos = async (req, res) => {
   try {
-    const repos = await Repo.find({}).select("owner name").sort({ owner: 1, name: 1 });
-    res.json(repos);
+    const reposWithReviews = await Review.aggregate([
+      {
+        $group: {
+          _id: "$repoId",
+          latestReviewDate: { $max: "$updatedAt" },
+          attentionCount: {
+            $sum: { $cond: [{ $gt: [{ $size: "$findings" }, 0] }, 1, 0] }
+          }
+        }
+      },
+      {
+        $sort: { latestReviewDate: -1 }
+      },
+      {
+        $lookup: {
+          from: "repos",
+          localField: "_id",
+          foreignField: "_id",
+          as: "repoDetails"
+        }
+      },
+      {
+        $unwind: "$repoDetails"
+      },
+      {
+        $project: {
+          _id: "$repoDetails._id",
+          owner: "$repoDetails.owner",
+          name: "$repoDetails.name",
+          latestReviewDate: 1,
+          attentionCount: 1,
+          lastIndexedAt: "$repoDetails.updatedAt"
+        }
+      }
+    ]);
+
+    res.json(reposWithReviews);
   } catch (error) {
     console.error("Error fetching repos:", error);
     res.status(500).json({ message: "Failed to fetch repos" });

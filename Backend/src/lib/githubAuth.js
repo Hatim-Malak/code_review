@@ -5,7 +5,23 @@ import dotenv from "dotenv"
 
 dotenv.config()
 
-const privateKey  = Buffer.from(process.env.GITHUB_APP_PRIVATE_KEY,"base64")
+let privateKeyString = process.env.GITHUB_APP_PRIVATE_KEY || "";
+privateKeyString = privateKeyString.replace(/\\n/g, "\n"); // Fix escaped newlines
+
+if (!privateKeyString.includes("BEGIN")) {
+    // Try decoding as a base64-encoded PEM file first
+    const decoded = Buffer.from(privateKeyString, "base64").toString("utf8");
+    if (decoded.includes("BEGIN")) {
+        privateKeyString = decoded;
+    } else {
+        // The user likely copied the base64 content but omitted the -----BEGIN/END----- headers.
+        // Let's rebuild the PEM format for them.
+        const cleanBase64 = privateKeyString.replace(/\s+/g, ""); // Remove all whitespace
+        const lines = cleanBase64.match(/.{1,64}/g)?.join("\n") || "";
+        privateKeyString = `-----BEGIN RSA PRIVATE KEY-----\n${lines}\n-----END RSA PRIVATE KEY-----`;
+    }
+}
+privateKeyString = privateKeyString.trim();
 
 export const appJwt = () => {
     const now = Math.floor(Date.now()/1000);
@@ -15,7 +31,7 @@ export const appJwt = () => {
             exp:now+90*60,
             iss:process.env.GITHUB_APP_ID
         },
-        privateKey,
+        privateKeyString,
         {
             algorithm:"RS256"
         }   
@@ -23,13 +39,13 @@ export const appJwt = () => {
 }
 
 
-export const octokitForInstallation = (InstallationId) => {
+export const octokitForInstallation = (installationId) => {
     return new Octokit({
         authStrategy:createAppAuth,
         auth:{
             appId:process.env.GITHUB_APP_ID,
-            privateKey,
-            InstallationId,
+            privateKey: privateKeyString,
+            installationId,
         },
     })
 }

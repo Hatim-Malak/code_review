@@ -124,7 +124,7 @@ def _safe_structured_invoke(llm, messages, fallback, node_name: str = "llm_call"
         return fallback
 
 
-multiquery_llm = ChatGroq(model="llama-3.1-8b-instant", temperature=0.3).with_structured_output(MultiQueries)
+multiquery_llm = ChatGroq(model="openai/gpt-oss-20b", temperature=0.3).with_structured_output(MultiQueries)
 
 
 def _generate_multi_queries(query: str) -> list[str]:
@@ -238,7 +238,7 @@ def build_agent_graph(model_name: str):
     judge_llm = ChatGroq(model=model_name, temperature=0).with_structured_output(RagJudge)
     answer_llm = ChatGroq(model=model_name, temperature=0.2, max_tokens=1024)
     language_checking_llm = ChatGroq(model=model_name, temperature=0).with_structured_output(CheckLanguage)
-    fast_llm = ChatGroq(model="llama-3.1-8b-instant", temperature=0)
+    fast_llm = ChatGroq(model="openai/gpt-oss-20b", temperature=0)
 
     def language_checking_node(state: AgentState) -> AgentState:
         history_block = (
@@ -567,14 +567,37 @@ def get_review_llm(model_name: str):
         review_llm_cache[model_name] = ChatGroq(model=model_name, temperature=0).with_structured_output(HunkReview)
     return review_llm_cache[model_name]
 
+IMPORT_RE = re.compile(r"^[+-]\s*(import|from)\s")
+COMMENT_OR_BLANK_RE = re.compile(r"^[+-]\s*(#.*)?$")
+
+def _is_trivial_hunk(hunk_text: str) -> bool:
+    changed = [l for l in hunk_text.splitlines() if l.startswith(("+", "-")) and not l.startswith(("+++", "---"))]
+    if not changed:
+        return True
+    meaningful = [l for l in changed if not COMMENT_OR_BLANK_RE.match(l) and not IMPORT_RE.match(l)]
+    return len(meaningful) == 0
 
 def _review_rag_search(query: str, repo_namespace: str) -> list[dict]:
-    """Grounds a finding in two sources at once: the repo's own indexed code
-    and the general knowledge base, merged before reranking."""
-    repo_candidates = _rag_candidates(query, namespace=repo_namespace)
-    general_candidates = _rag_candidates(query, namespace=None)
-    merged = {**general_candidates, **repo_candidates}
-    return _rerank(query, list(merged.values()), top_n=3)
+    """Single embedding call instead of multi-query expansion — a diff hunk
+    is already specific text, unlike a short ambiguous chat question, so
+    paraphrasing it into 3 variants buys little recall for real token cost."""
+    query_vector = embeddings.embed_query(query)  # zero LLM calls
+    candidate_pool: Dict[str, Dict[str, Any]] = {}
+    for ns in (repo_namespace, None):
+        result = index.query(vector=query_vector, top_k=20, include_metadata=True, namespace=ns or "")
+        if result and result.matches:
+            for match in result.matches:
+                if match.id not in candidate_pool:
+                    candidate_pool[match.id] = {
+                        "id": match.id,
+                        "text": match.metadata.get("text", ""),
+                        "code_solution": match.metadata.get("code_solution", ""),
+                        "source": match.metadata.get("source", "Unknown Source"),
+                        "file_path": match.metadata.get("file_path", ""),
+                        "token_count": match.metadata.get("token_count", 0),
+                        "chunk_index": match.metadata.get("chunk_index", 0),
+                    }
+    return _rerank(query, list(candidate_pool.values()), top_n=3)
 
 
 def _review_hunk(model_name: str, filename: str, hunk_text: str, context_chunks: list[dict]) -> HunkReview:
@@ -610,6 +633,8 @@ def review_pr(data: ReviewRequest):
         for hunk in _split_patch_into_hunks(file.patch):
             if hunks_processed >= MAX_HUNKS_PER_REVIEW:
                 break
+            if _is_trivial_hunk(hunk["text"]):
+                continue
             hunks_processed += 1
 
             query = f"Review this change in {file.filename}:\n{hunk['text']}"

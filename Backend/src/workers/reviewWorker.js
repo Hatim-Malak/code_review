@@ -5,36 +5,63 @@ import Repo from "../models/repo.model.js"
 import Review from "../models/review.model.js"
 import { postCheckRun } from "../lib/githubChecks.js";
 import { redisConnection } from "../lib/redisConnection.js";
+import { connectdb } from "../lib/db.js";
+
+connectdb();
+console.log("Review worker started, waiting for jobs...");
 
 new Worker(
     "review-pr",
     async(job)=>{
+        console.log(`Processing review job for PR #${job.data.prNumber}`);
         const {repoId,installationId,prNumber,headSha} = job.data
         const repo = await Repo.findById(repoId)
         const octokit = octokitForInstallation(installationId);
 
-        const {data:files} = await octokit.pulls.listFiles({
-            owner:repo.owner,
-            repo:repo.name,
-            pull_number:prNumber,
-            per_page:100
-        })
+        const { data: prData } = await octokit.pulls.get({
+            owner: repo.owner,
+            repo: repo.name,
+            pull_number: prNumber,
+        });
 
-        const diffFiles = files
+        const { data: filesResponse } = await octokit.pulls.listFiles({
+            owner: repo.owner,
+            repo: repo.name,
+            pull_number: prNumber,
+            per_page: 100
+        });
+        
+        const diffFiles = filesResponse
             .filter((f)=> !isGeneratedOrVendored(f.filename))
-            .map((f) => ({filename:f.filename,patch:f.patch,status:f.status}))
+            .map((f) => ({filename:f.filename,patch:f.patch,status:f.status}));
 
-        const review = await Review.create({repoId:repo._id,prNumber:headSha,status:"in_progress"})
+        const review = await Review.findOneAndUpdate(
+            { repoId: repo._id, prNumber },
+            {
+                prTitle: prData.title,
+                prAuthor: {
+                    name: prData.user.login,
+                    avatarUrl: prData.user.avatar_url,
+                },
+                headSha,
+                status: "in_progress",
+                findings: [] // reset findings on new run
+            },
+            { upsert: true, new: true }
+        )
+        console.log(`Saved initial review state to DB for PR #${prNumber}`);
 
         const {data} = await axios.post(`${process.env.AI_SERVICES_URL}/review`,{
-            namespace:repo.namespace,
-            file:diffFiles,
-            model_name: "llama-3.1-8b-instant"
+            namespace: repo.namespace,
+            repo_full_name: `${repo.owner}/${repo.name}`,
+            files: diffFiles,
+            model_name: "llama3-70b-8192"
         })
 
         review.status = "completed"
         review.findings = data.findings;
         await review.save();
+        console.log(`Review completed for PR #${prNumber}`);
 
         await postCheckRun(octokit,repo,headSha,{ status: "completed", findings: data.findings })
     },
