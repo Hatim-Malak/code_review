@@ -90,7 +90,15 @@ export const getUserRepos = async (req, res) => {
           _id: "$repoId",
           latestReviewDate: { $max: "$updatedAt" },
           attentionCount: {
-            $sum: { $cond: [{ $gt: [{ $size: "$findings" }, 0] }, 1, 0] }
+            $sum: {
+              $size: {
+                $filter: {
+                  input: { $ifNull: ["$findings", []] },
+                  as: "f",
+                  cond: { $ne: ["$$f.resolved", true] }
+                }
+              }
+            }
           }
         }
       },

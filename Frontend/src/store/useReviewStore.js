@@ -66,12 +66,23 @@ export const useReviewStore = create((set, get) => ({
     if (!selectedRepo || !selectedReview || !findingId) return;
 
     try {
-      // Optimistic update
+      // Optimistic update for the review detail
       const prevReview = { ...selectedReview };
       const updatedFindings = selectedReview.findings.map(f => 
         f._id === findingId ? { ...f, resolved } : f
       );
       set({ selectedReview: { ...selectedReview, findings: updatedFindings } });
+
+      // Optimistic update for the repo card red dot
+      const { repos } = get();
+      const updatedRepos = repos.map(r => {
+        if (r._id === selectedRepo._id) {
+          // If we resolved it, decrement, if we unresolved it, increment
+          return { ...r, attentionCount: Math.max(0, r.attentionCount + (resolved ? -1 : 1)) };
+        }
+        return r;
+      });
+      set({ repos: updatedRepos });
 
       await axiosInstance.patch(`/repos/${selectedRepo.owner}/${selectedRepo.name}/pr/${selectedReview.prNumber}/finding/${findingId}`, {
         resolved

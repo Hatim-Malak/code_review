@@ -27,11 +27,7 @@ INDEX_NAME = "kb-index"
 pc = Pinecone(api_key=PINECONE_API_KEY)
 
 print("[rag_init] Loading Cross-Encoder reranker model...")
-try:
-    reranker = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2", local_files_only=True)
-except Exception:
-    # Fallback to network if not cached
-    reranker = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
+reranker = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
 
 if INDEX_NAME not in pc.list_indexes().names():
     pc.create_index(
@@ -175,11 +171,7 @@ def _rag_candidates(query: str, source_filter: str = None, namespace: str = None
         filter_expression["source"] = {"$eq": source_filter}
 
     for q in expanded_queries:
-        try:
-            query_vector = embeddings.embed_query(q)
-        except Exception as e:
-            print(f"[_rag_candidates_warning] Embeddings failed for query '{q}': {e}")
-            continue
+        query_vector = embeddings.embed_query(q)
 
         result = index.query(
             vector=query_vector,
@@ -600,11 +592,7 @@ def _review_rag_search(query: str, repo_namespace: str) -> list[dict]:
     """Single embedding call instead of multi-query expansion — a diff hunk
     is already specific text, unlike a short ambiguous chat question, so
     paraphrasing it into 3 variants buys little recall for real token cost."""
-    try:
-        query_vector = embeddings.embed_query(query)  # zero LLM calls
-    except Exception as e:
-        print(f"[_review_rag_search_warning] Embeddings failed, proceeding without context: {e}")
-        return []
+    query_vector = embeddings.embed_query(query)  # zero LLM calls
         
     candidate_pool: Dict[str, Dict[str, Any]] = {}
     for ns in (repo_namespace, None):

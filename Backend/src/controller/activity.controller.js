@@ -19,21 +19,46 @@ export const getActivityFeed = async (req, res) => {
     const totalRepos = repoIds.length;
     const totalReviews = await Review.countDocuments({ repoId: { $in: repoIds } });
     
-    // Using aggregation to sum finding counts
+    // Calculate dates
+    const oneWeekAgo = new Date();
+    oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+
+    const reviewsThisWeek = await Review.countDocuments({ 
+      repoId: { $in: repoIds },
+      createdAt: { $gte: oneWeekAgo }
+    });
+
+    // Using aggregation to sum finding counts and determine clean vs attention reviews
     const findingsResult = await Review.aggregate([
       { $match: { repoId: { $in: repoIds } } },
-      { $project: { findingCount: { $size: { $ifNull: ["$findings", []] } } } },
-      { $group: { _id: null, totalFindings: { $sum: "$findingCount" } } }
+      { $project: { 
+          findingCount: { $size: { $ifNull: ["$findings", []] } } 
+        } 
+      },
+      { $group: { 
+          _id: null, 
+          totalFindings: { $sum: "$findingCount" },
+          cleanReviews: {
+            $sum: { $cond: [{ $eq: ["$findingCount", 0] }, 1, 0] }
+          },
+          attentionReviews: {
+            $sum: { $cond: [{ $gt: ["$findingCount", 0] }, 1, 0] }
+          }
+        } 
+      }
     ]);
     
-    const totalFindings = findingsResult.length > 0 ? findingsResult[0].totalFindings : 0;
+    const statsData = findingsResult.length > 0 ? findingsResult[0] : { totalFindings: 0, cleanReviews: 0, attentionReviews: 0 };
 
     res.json({
       activities,
       stats: {
         totalRepos,
         totalReviews,
-        totalFindings
+        reviewsThisWeek,
+        totalFindings: statsData.totalFindings,
+        cleanReviews: statsData.cleanReviews,
+        attentionReviews: statsData.attentionReviews
       }
     });
   } catch (error) {

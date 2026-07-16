@@ -6,7 +6,19 @@ import RepoCard from "../components/RepoCard.jsx";
 import ReviewList from "../components/ReviewList.jsx";
 import ReviewDetail from "../components/ReviewDetail.jsx";
 import { Helmet } from "react-helmet-async";
-import { GitPullRequest, ArrowLeft, Plus, GitMerge, FolderGit2, Search, ExternalLink } from "lucide-react";
+import { GitPullRequest, ArrowLeft, Plus, GitMerge, FolderGit2, Search, ExternalLink, Activity, Box, ShieldAlert, CheckCircle, RefreshCw, XCircle, Sparkles } from "lucide-react";
+import { axiosInstance } from "../lib/axios.js";
+
+const ActivityIcon = ({ type }) => {
+  switch (type) {
+    case 'review_started': return <RefreshCw className="text-blue-500 animate-spin-slow" size={16} />;
+    case 'review_completed': return <CheckCircle className="text-orange-500" size={16} />;
+    case 'review_failed': return <XCircle className="text-red-500" size={16} />;
+    case 'reindexed': return <Box className="text-purple-500" size={16} />;
+    case 'pr_merged_clean': return <CheckCircle className="text-green-500" size={16} />;
+    default: return <Activity className="text-gray-500" size={16} />;
+  }
+};
 
 const SkeletonRepoList = () => (
   <div className="flex flex-col gap-2">
@@ -40,9 +52,27 @@ const ReviewsPage = () => {
 
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
+  
+  const [dashboardStats, setDashboardStats] = useState(null);
+  const [activities, setActivities] = useState([]);
+  const [isLoadingDashboard, setIsLoadingDashboard] = useState(true);
 
   useEffect(() => {
     loadRepos();
+    
+    // Fetch global stats and activities for the right sidebar
+    const fetchDashboard = async () => {
+      try {
+        const res = await axiosInstance.get("/activity");
+        setDashboardStats(res.data.stats);
+        setActivities(res.data.activities);
+      } catch (err) {
+        console.error("Failed to load dashboard data", err);
+      } finally {
+        setIsLoadingDashboard(false);
+      }
+    };
+    fetchDashboard();
   }, []);
 
   const filteredRepos = repos.filter(repo => 
@@ -172,8 +202,8 @@ const ReviewsPage = () => {
             )}
           </div>
 
-          {/* Right Panel - Content */}
-          <div className="flex-1 overflow-auto p-6 pt-[100px] pb-8">
+          {/* Middle Panel - Content */}
+          <div className="flex-1 overflow-auto p-6 pt-[100px] pb-8 bg-cream/50 relative border-r border-greenDark/10">
             {!selectedRepo ? (
               <div className="flex flex-col items-center justify-center h-full text-center p-4">
                 <div className="relative group max-w-lg w-full">
@@ -284,6 +314,79 @@ const ReviewsPage = () => {
                 />
               </div>
             )}
+          </div>
+          
+          {/* Third Panel - Activity & Stats */}
+          <div className="w-80 lg:w-96 bg-white/40 overflow-y-auto p-4 pt-[100px] pb-8 hidden xl:flex xl:flex-col gap-6">
+            
+            {/* Stats Grid */}
+            <div className="flex flex-col gap-3">
+              <h3 className="text-sm font-black text-greenDark uppercase tracking-widest flex items-center gap-2 mb-1">
+                <Activity size={16} /> Overview
+              </h3>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-white/70 border border-greenDark/10 p-3 rounded-xl shadow-sm flex flex-col gap-1">
+                  <p className="text-[10px] font-bold text-greenDark/60 uppercase tracking-wider">PRs This Week</p>
+                  <p className="text-xl font-black text-greenDark">
+                    {dashboardStats ? dashboardStats.reviewsThisWeek : "..."}
+                  </p>
+                </div>
+                <div className="bg-white/70 border border-greenDark/10 p-3 rounded-xl shadow-sm flex flex-col gap-1">
+                  <p className="text-[10px] font-bold text-greenDark/60 uppercase tracking-wider">Repos Connected</p>
+                  <p className="text-xl font-black text-greenDark">
+                    {dashboardStats ? dashboardStats.totalRepos : "..."}
+                  </p>
+                </div>
+                <div className="bg-white/70 border border-greenDark/10 p-3 rounded-xl shadow-sm flex flex-col gap-1">
+                  <p className="text-[10px] font-bold text-orange-600/70 uppercase tracking-wider">Attention Needed</p>
+                  <p className="text-xl font-black text-orange-600">
+                    {dashboardStats ? dashboardStats.attentionReviews : "..."}
+                  </p>
+                </div>
+                <div className="bg-white/70 border border-greenDark/10 p-3 rounded-xl shadow-sm flex flex-col gap-1">
+                  <p className="text-[10px] font-bold text-green-600/70 uppercase tracking-wider">Merged Clean</p>
+                  <p className="text-xl font-black text-green-600">
+                    {dashboardStats ? dashboardStats.cleanReviews : "..."}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Activity Feed */}
+            <div className="flex flex-col gap-3 mt-4 flex-1">
+              <h3 className="text-sm font-black text-greenDark uppercase tracking-widest flex items-center gap-2 mb-1">
+                <Sparkles size={16} /> Recent Activity
+              </h3>
+              
+              <div className="flex-1 flex flex-col gap-3">
+                {isLoadingDashboard ? (
+                  <div className="text-xs text-greenDark/50 text-center py-8 animate-pulse">Loading activity...</div>
+                ) : activities.length === 0 ? (
+                  <div className="text-xs text-greenDark/50 text-center py-8">No recent activity.</div>
+                ) : (
+                  activities.map(act => (
+                    <div key={act._id} className="p-3 bg-white/70 border border-greenDark/5 rounded-xl shadow-sm flex gap-3 items-start hover:bg-white transition-colors">
+                      <div className="mt-1 p-1.5 bg-greenLight/10 rounded-full shrink-0">
+                        <ActivityIcon type={act.type} />
+                      </div>
+                      <div className="flex flex-col gap-0.5">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-bold text-sm text-greenDark">{act.repoId?.owner}/{act.repoId?.name}</span>
+                          {act.prNumber && (
+                            <span className="px-1.5 py-0.5 bg-greenDark/5 text-greenDark/70 text-[10px] font-bold rounded-md">
+                              PR #{act.prNumber}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-greenDark/80 leading-snug">{act.message}</p>
+                        <span className="text-[10px] font-semibold text-greenDark/40 mt-0.5">{timeAgo(act.createdAt)}</span>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+            
           </div>
         </div>
       </div>

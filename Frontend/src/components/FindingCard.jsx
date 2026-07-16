@@ -81,8 +81,6 @@ const FindingCard = ({ finding, onToggleResolve }) => {
           </div>
         </div>
       )}
-        </div>
-      )}
 
       {/* Diff Context section */}
       {finding.hunkText && !finding.resolved && (

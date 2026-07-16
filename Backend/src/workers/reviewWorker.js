@@ -64,7 +64,7 @@ new Worker(
             namespace: repo.namespace,
             repo_full_name: `${repo.owner}/${repo.name}`,
             files: diffFiles,
-            model_name: "llama3-70b-8192"
+            model_name: "openai/gpt-oss-20b"
         })
 
         review.status = "completed"
