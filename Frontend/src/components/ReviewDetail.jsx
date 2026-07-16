@@ -1,6 +1,8 @@
-import { ArrowLeft, ShieldCheck, Loader2, AlertCircle } from "lucide-react";
+import { ArrowLeft, ShieldCheck, Loader2, AlertCircle, RefreshCw } from "lucide-react";
 import StatusBadge from "./StatusBadge.jsx";
 import FindingCard from "./FindingCard.jsx";
+import { getDisplayStatus } from "../utils/statusLogic.js";
+import { useReviewStore } from "../store/useReviewStore.js";
 
 const SkeletonReviewDetail = () => (
   <div className="flex flex-col gap-6 animate-pulse mt-2">
@@ -18,11 +20,16 @@ const SkeletonReviewDetail = () => (
 );
 
 const ReviewDetail = ({ review, onBack, isLoading }) => {
+  const toggleFindingResolve = useReviewStore(state => state.toggleFindingResolve);
+  const reRunReview = useReviewStore(state => state.reRunReview);
+
   if (isLoading) {
     return <SkeletonReviewDetail />;
   }
 
   if (!review) return null;
+
+  const displayStatus = getDisplayStatus(review.status, review.severityBreakdown);
 
   return (
     <div className="flex flex-col gap-6">
@@ -48,12 +55,23 @@ const ReviewDetail = ({ review, onBack, isLoading }) => {
             </span>
           </div>
         </div>
-        <StatusBadge status={review.status} />
+        <div className="flex items-center gap-3">
+          {(displayStatus === 'completed' || displayStatus === 'clean' || displayStatus === 'errors_found' || displayStatus === 'needs_attention') && (
+            <button
+              onClick={() => reRunReview(review.prNumber)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-greenDark/10 bg-white hover:bg-greenDark/5 text-greenDark/70 hover:text-greenDark text-xs font-bold transition-colors"
+            >
+              <RefreshCw size={14} />
+              Re-run Review
+            </button>
+          )}
+          <StatusBadge status={displayStatus} />
+        </div>
       </div>
 
       <div className="flex flex-col gap-4">
         {review.findings.length === 0 ? (
-          review.status === 'failed' ? (
+          displayStatus === 'failed' ? (
             <div className="flex flex-col items-center justify-center py-20 text-center bg-gradient-to-b from-red-50 to-white/30 border border-red-200/50 rounded-3xl shadow-sm mt-2">
               <div className="p-6 bg-red-100 rounded-full mb-6 shadow-inner border border-red-200 relative group">
                 <AlertCircle size={56} className="text-red-500 relative z-10 transform group-hover:scale-110 transition-transform duration-300" />
@@ -65,7 +83,7 @@ const ReviewDetail = ({ review, onBack, isLoading }) => {
                 The AI encountered an error while analyzing this pull request. Please try again later or check the repository settings.
               </p>
             </div>
-          ) : (review.status === 'in_progress' || review.status === 'pending') ? (
+          ) : (displayStatus === 'in_progress' || displayStatus === 'pending') ? (
             <div className="flex flex-col items-center justify-center py-20 text-center bg-gradient-to-b from-yellow-50 to-white/30 border border-yellow-200/50 rounded-3xl shadow-sm mt-2">
               <div className="p-6 bg-yellow-100 rounded-full mb-6 shadow-inner border border-yellow-200 relative group">
                 <Loader2 size={56} className="text-yellow-600 relative z-10 animate-spin" />
@@ -93,7 +111,7 @@ const ReviewDetail = ({ review, onBack, isLoading }) => {
           )
         ) : (
           review.findings.map((finding, idx) => (
-            <FindingCard key={idx} finding={finding} />
+            <FindingCard key={finding._id || idx} finding={finding} onToggleResolve={toggleFindingResolve} />
           ))
         )}
       </div>

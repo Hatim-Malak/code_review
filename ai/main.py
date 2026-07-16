@@ -27,7 +27,11 @@ INDEX_NAME = "kb-index"
 pc = Pinecone(api_key=PINECONE_API_KEY)
 
 print("[rag_init] Loading Cross-Encoder reranker model...")
-reranker = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
+try:
+    reranker = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2", local_files_only=True)
+except Exception:
+    # Fallback to network if not cached
+    reranker = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
 
 if INDEX_NAME not in pc.list_indexes().names():
     pc.create_index(
@@ -171,7 +175,12 @@ def _rag_candidates(query: str, source_filter: str = None, namespace: str = None
         filter_expression["source"] = {"$eq": source_filter}
 
     for q in expanded_queries:
-        query_vector = embeddings.embed_query(q)
+        try:
+            query_vector = embeddings.embed_query(q)
+        except Exception as e:
+            print(f"[_rag_candidates_warning] Embeddings failed for query '{q}': {e}")
+            continue
+
         result = index.query(
             vector=query_vector,
             top_k=20,
@@ -472,6 +481,7 @@ class ReviewFinding(BaseModel):
     severity: Literal["info", "warning", "error"]
     comment: str
     suggestedFix: str | None = None
+    hunkText: str | None = None
 
 
 class ReviewResult(BaseModel):
@@ -488,8 +498,17 @@ class HunkReview(BaseModel):
     )
     severity: Literal["info", "warning", "error"] = Field(
         default="info",
-        description="'error' for bugs or security issues, 'warning' for risky-but-not-broken patterns, "
-                    "'info' for minor style notes. Irrelevant if has_issue is False."
+        description=(
+            "Base this ONLY on CONSEQUENCE if the issue is real:\n"
+            "'error' — would break functionality, corrupt data, crash the app, or introduce a security "
+            "hole if this code runs as written.\n"
+            "'warning' — works today but is risky: touches how a critical data record is constructed or "
+            "written (database writes, IDs, status fields consumed elsewhere), or deviates from an "
+            "established pattern.\n"
+            "'info' — purely cosmetic: naming, formatting, comments, minor style.\n"
+            "DO NOT scale severity based on uncertainty. If you are uncertain about a data-correctness issue, "
+            "do not lower it to 'info' — an unconfirmed data issue is worse than a confirmed style nit."
+        ),
     )
     comment: str = Field(
         default="",
@@ -581,7 +600,12 @@ def _review_rag_search(query: str, repo_namespace: str) -> list[dict]:
     """Single embedding call instead of multi-query expansion — a diff hunk
     is already specific text, unlike a short ambiguous chat question, so
     paraphrasing it into 3 variants buys little recall for real token cost."""
-    query_vector = embeddings.embed_query(query)  # zero LLM calls
+    try:
+        query_vector = embeddings.embed_query(query)  # zero LLM calls
+    except Exception as e:
+        print(f"[_review_rag_search_warning] Embeddings failed, proceeding without context: {e}")
+        return []
+        
     candidate_pool: Dict[str, Dict[str, Any]] = {}
     for ns in (repo_namespace, None):
         result = index.query(vector=query_vector, top_k=20, include_metadata=True, namespace=ns or "")
@@ -610,7 +634,8 @@ def _review_hunk(model_name: str, filename: str, hunk_text: str, context_chunks:
             "You are a precise, conservative code reviewer. You are given one hunk (a contiguous block "
             "of changes) from a pull request diff, plus retrieved context from the project's own codebase "
             "and general best-practice knowledge. Flag an issue ONLY if it is specific and grounded in the "
-            f"diff or the given context — never invent a problem to have something to say. {GROUNDING_RULE}"
+            f"diff or the given context — never invent a problem to have something to say. {GROUNDING_RULE}\n"
+            "If you are not confident the issue is real, or you are just hedging your bets, set has_issue to False."
         )),
         HumanMessage(content=f"File: {filename}\n\nDiff hunk:\n{hunk_text}\n\nRetrieved context:\n{context_str}")
     ]
@@ -651,6 +676,7 @@ def review_pr(data: ReviewRequest):
                 severity=review.severity,
                 comment=review.comment,
                 suggestedFix=review.suggested_fix,
+                hunkText=hunk["text"],
             ))
             all_sources.update(c.get("file_path") or c["source"] for c in context_chunks)
 

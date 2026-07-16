@@ -4,6 +4,7 @@ import axios from "axios";
 import { octokitForInstallation } from "../lib/githubAuth.js";
 import { fetchRepoFiles } from "../lib/repoTree.js";
 import Repo from "../models/repo.model.js";
+import Activity from "../models/activity.model.js";
 import { redisConnection } from "../lib/redisConnection.js";
 
 new Worker(
@@ -34,6 +35,12 @@ async function handleFullIndex({ repoId }) {
   });
   repo.lastIndexedSha = branch.commit.sha;
   await repo.save();
+
+  await Activity.create({
+    type: "reindexed",
+    repoId: repo._id,
+    message: `Completed full knowledge base indexing for repository`
+  });
 }
 
 async function handleIncrementalIndex({ repoId, commits }) {
@@ -71,6 +78,12 @@ async function handleIncrementalIndex({ repoId, commits }) {
 
   repo.lastIndexedSha = commits.at(-1)?.id ?? repo.lastIndexedSha;
   await repo.save();
+
+  await Activity.create({
+    type: "reindexed",
+    repoId: repo._id,
+    message: `Updated knowledge base index with ${commits.length} new commit(s)`
+  });
 }
 
 function isSkippable(path) {

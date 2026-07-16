@@ -1,4 +1,5 @@
-import { AlertTriangle, Info, XCircle, FileCode2, Terminal } from "lucide-react";
+import { useState } from "react";
+import { AlertTriangle, Info, XCircle, FileCode2, Terminal, Code2, ChevronDown, ChevronUp, CheckSquare, Square } from "lucide-react";
 
 const severityConfig = {
   error: {
@@ -18,11 +19,12 @@ const severityConfig = {
   },
 };
 
-const FindingCard = ({ finding }) => {
+const FindingCard = ({ finding, onToggleResolve }) => {
+  const [showDiff, setShowDiff] = useState(false);
   const config = severityConfig[finding.severity] || severityConfig.info;
 
   return (
-    <div className="group bg-white/80 hover:bg-white border border-greenDark/10 hover:border-greenDark/20 rounded-2xl shadow-sm hover:shadow-md transition-all duration-300 overflow-hidden mb-2">
+    <div className={`group bg-white/80 hover:bg-white border hover:border-greenDark/20 rounded-2xl shadow-sm hover:shadow-md transition-all duration-300 overflow-hidden mb-2 ${finding.resolved ? 'border-greenDark/5 opacity-70' : 'border-greenDark/10'}`}>
       {/* Header section */}
       <div className="flex items-start justify-between gap-4 p-4 md:p-5 border-b border-greenDark/5 bg-gradient-to-r from-cream/40 to-transparent">
         <div className="flex items-center gap-3">
@@ -38,14 +40,26 @@ const FindingCard = ({ finding }) => {
             </span>
           </div>
         </div>
-        <div className={`flex items-center px-3 py-1.5 rounded-full border text-xs font-bold shadow-sm ${config.style}`}>
-          {config.icon}
-          {config.label}
+        <div className="flex items-center gap-3">
+          <button 
+            onClick={() => onToggleResolve(finding._id, !finding.resolved)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-bold transition-colors ${finding.resolved ? 'bg-greenDark text-cream border-greenDark' : 'bg-white text-greenDark/60 border-greenDark/10 hover:bg-greenDark/5'}`}
+          >
+            {finding.resolved ? <CheckSquare size={14} /> : <Square size={14} />}
+            {finding.resolved ? "Resolved" : "Mark Resolved"}
+          </button>
+          
+          {!finding.resolved && (
+            <div className={`flex items-center px-3 py-1.5 rounded-full border text-xs font-bold shadow-sm ${config.style}`}>
+              {config.icon}
+              {config.label}
+            </div>
+          )}
         </div>
       </div>
       
       {/* Comment section */}
-      <div className="p-4 md:p-5">
+      <div className={`p-4 md:p-5 ${finding.resolved ? 'line-through text-greenDark/40' : ''}`}>
         <p className="text-[15px] md:text-base text-greenDark/90 leading-relaxed font-medium">
           {finding.comment}
         </p>
@@ -65,6 +79,32 @@ const FindingCard = ({ finding }) => {
               {finding.suggestedFix}
             </pre>
           </div>
+        </div>
+      )}
+        </div>
+      )}
+
+      {/* Diff Context section */}
+      {finding.hunkText && !finding.resolved && (
+        <div className="mx-4 md:mx-5 mb-5 rounded-xl border border-greenDark/10 overflow-hidden">
+          <button 
+            onClick={() => setShowDiff(!showDiff)}
+            className="w-full flex items-center justify-between px-4 py-2.5 bg-greenDark/5 hover:bg-greenDark/10 transition-colors text-greenDark"
+          >
+            <div className="flex items-center gap-2 text-sm font-bold">
+              <Code2 size={16} className="text-greenDark/70" />
+              Diff Context
+            </div>
+            {showDiff ? <ChevronUp size={16} className="text-greenDark/60" /> : <ChevronDown size={16} className="text-greenDark/60" />}
+          </button>
+          
+          {showDiff && (
+            <div className="bg-[#1a1f1c] p-4 overflow-x-auto border-t border-greenDark/10">
+              <pre className="text-sm md:text-[14px] text-cream/90 font-mono whitespace-pre-wrap leading-relaxed">
+                {finding.hunkText}
+              </pre>
+            </div>
+          )}
         </div>
       )}
     </div>

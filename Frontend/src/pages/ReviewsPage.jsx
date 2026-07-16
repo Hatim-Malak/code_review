@@ -39,6 +39,7 @@ const ReviewsPage = () => {
   } = useReviewStore();
 
   const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("All");
 
   useEffect(() => {
     loadRepos();
@@ -66,6 +67,16 @@ const ReviewsPage = () => {
 
   const cleanCount = reviews.filter(r => r.status === 'completed' && r.findingCount === 0).length;
   const attentionCount = reviews.filter(r => r.findingCount > 0).length;
+
+  const getFilteredReviews = () => {
+    if (statusFilter === "All") return reviews;
+    if (statusFilter === "Clean") return reviews.filter(r => r.status === 'completed' && r.findingCount === 0);
+    if (statusFilter === "Needs Attention") return reviews.filter(r => r.status === 'completed' && r.findingCount > 0);
+    if (statusFilter === "In Progress") return reviews.filter(r => r.status === 'in_progress' || r.status === 'pending');
+    return reviews;
+  };
+
+  const displayedReviews = getFilteredReviews();
 
   const timeAgo = (dateString) => {
     if (!dateString) return '';
@@ -242,6 +253,21 @@ const ReviewsPage = () => {
                         )}
                       </div>
                     )}
+                    
+                    {/* Status Filters */}
+                    {!isLoadingReviews && reviews.length > 0 && (
+                      <div className="flex gap-2 mt-2">
+                        {["All", "Needs Attention", "Clean", "In Progress"].map(filter => (
+                          <button
+                            key={filter}
+                            onClick={() => setStatusFilter(filter)}
+                            className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors ${statusFilter === filter ? 'bg-greenDark text-cream' : 'bg-white/60 text-greenDark/60 hover:bg-white hover:text-greenDark border border-greenDark/10'}`}
+                          >
+                            {filter}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   <button
                     onClick={clearSelection}
@@ -252,7 +278,7 @@ const ReviewsPage = () => {
                   </button>
                 </div>
                 <ReviewList
-                  reviews={reviews}
+                  reviews={displayedReviews}
                   onSelect={loadReviewDetail}
                   isLoading={isLoadingReviews}
                 />

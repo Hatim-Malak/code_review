@@ -10,8 +10,9 @@ const findingSchema = new mongoose.Schema(
     comment: String,
     suggestedFix: String,
     rag_sources: [String],
-  },
-  { _id: false },
+    hunkText: String,
+    resolved: { type: Boolean, default: false },
+  }
 );
 
 const reviewSchema = new mongoose.Schema(

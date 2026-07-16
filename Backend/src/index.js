@@ -6,6 +6,7 @@ import authRoutes from "./routes/auth.route.js";
 import chatRoutes from "./routes/chat.route.js";
 import githubRoutes from "./routes/github.route.js";
 import repoRoutes from "./routes/repo.route.js";
+import activityRoutes from "./routes/activity.route.js";
 import { connectdb } from "./lib/db.js";
 import { Server } from "socket.io";
 import { createServer } from "http";
@@ -67,6 +68,7 @@ app.use(express.json({ limit: "5mb" }));
 app.use("/api/auth", authRoutes);
 app.use("/api/chat", chatRoutes);
 app.use("/api/repos", repoRoutes);
+app.use("/api/activity", activityRoutes);
 
 server.listen(PORT, () => {
   console.log("The server is running on the port ", PORT);
