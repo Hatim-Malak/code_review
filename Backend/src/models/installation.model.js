@@ -15,6 +15,11 @@ const installationSchema = new mongoose.Schema(
             type:String,
             enum:["User","Organization"],
         },
+        userId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "User",
+            default: null
+        }
     },
     {timestamps:true}
 );

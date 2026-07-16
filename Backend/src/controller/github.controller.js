@@ -92,3 +92,39 @@ export const handleWbhook = async (req, res) => {
     }
   }
 };
+
+export const linkInstallation = async (req, res) => {
+  try {
+    const { installation_id, state } = req.body;
+    
+    if (!installation_id || !state) {
+      return res.status(400).json({ message: "installation_id and state are required" });
+    }
+
+    // `state` should match the logged-in user's ID
+    if (state !== req.user._id.toString()) {
+      return res.status(403).json({ message: "state mismatch, unauthorized linking" });
+    }
+
+    const installation = await Installation.findOneAndUpdate(
+      { installationId: Number(installation_id) },
+      { userId: req.user._id },
+      { new: true }
+    );
+
+    if (!installation) {
+      // It's possible the webhook hasn't fired yet, or we got a bad ID.
+      // But typically webhook fires first. Let's create a placeholder if it doesn't exist
+      await Installation.create({
+        installationId: Number(installation_id),
+        accountLogin: "Pending Sync",
+        userId: req.user._id
+      });
+    }
+
+    res.json({ message: "Installation successfully linked to your account." });
+  } catch (error) {
+    console.error("Error linking installation:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};

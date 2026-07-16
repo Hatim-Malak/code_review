@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { axiosInstance } from "../lib/axios.js";
 import toast from "react-hot-toast";
+import { io } from "socket.io-client";
 
 export const useReviewStore = create((set, get) => ({
   repos: [],
@@ -10,6 +11,52 @@ export const useReviewStore = create((set, get) => ({
   isLoadingRepos: false,
   isLoadingReviews: false,
   isLoadingReviewDetail: false,
+  
+  // Indexing progress state — always visible, shows overall repo indexing status
+  indexingStatus: { total: 0, indexed: 0, progress: 0, isActive: false },
+  socket: null,
+
+  fetchIndexingStatus: async () => {
+    try {
+      const res = await axiosInstance.get("/repos/indexing-status");
+      const { total, indexed, progress } = res.data;
+      set({ indexingStatus: { total, indexed, progress, isActive: indexed < total } });
+    } catch (error) {
+      console.error("Error fetching indexing status:", error);
+    }
+  },
+
+  connectSocket: () => {
+    const existingSocket = get().socket;
+    if (existingSocket && existingSocket.connected) return;
+
+    const socket = io("http://localhost:5000", { withCredentials: true });
+    
+    socket.on("connect", () => {
+      console.log("ReviewStore Socket connected:", socket.id);
+    });
+
+    socket.on("indexingProgress", (data) => {
+      console.log("indexingProgress event received:", data);
+      // When any indexing event fires, re-fetch the real status from the API
+      get().fetchIndexingStatus();
+      if (data.status === "completed") {
+        toast.success("Repository indexed successfully!");
+      } else if (data.status === "failed") {
+        toast.error("Repository indexing failed.");
+      }
+    });
+
+    set({ socket });
+  },
+
+  disconnectSocket: () => {
+    const socket = get().socket;
+    if (socket) {
+      socket.disconnect();
+      set({ socket: null });
+    }
+  },
 
   loadRepos: async () => {
     try {

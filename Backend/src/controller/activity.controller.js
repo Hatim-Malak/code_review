@@ -1,12 +1,15 @@
 import Activity from "../models/activity.model.js";
 import Repo from "../models/repo.model.js";
 import Review from "../models/review.model.js";
+import Installation from "../models/installation.model.js";
 
 export const getActivityFeed = async (req, res) => {
   try {
-    // In a real app we'd filter by req.user's repos.
-    // Since we don't have user scoped repos yet, we fetch all repos.
-    const repos = await Repo.find({});
+    const userInstallations = await Installation.find({ userId: req.user._id });
+    const validInstallationIds = userInstallations.map(i => i.installationId);
+    
+    // Find repos belonging to the user's installations
+    const repos = await Repo.find({ installationId: { $in: validInstallationIds } });
     const repoIds = repos.map(r => r._id);
 
     // Fetch recent activity

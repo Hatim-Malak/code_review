@@ -6,23 +6,46 @@ import { fetchRepoFiles } from "../lib/repoTree.js";
 import Repo from "../models/repo.model.js";
 import Activity from "../models/activity.model.js";
 import { redisConnection } from "../lib/redisConnection.js";
+import { connectdb } from "../lib/db.js";
 
-new Worker(
+connectdb();
+console.log("[IndexedWorker] Index worker started, waiting for jobs...");
+
+const worker = new Worker(
   "index-repo",
   async (job) => {
-    if (job.name === "full-index") return handleFullIndex(job.data);
-    if (job.name === "incremental-index") return handleIncrementalIndex(job.data);
+    console.log(`[IndexedWorker] Picked up job: ${job.name} for repoId: ${job.data.repoId}`);
+    if (job.name === "full-index") return handleFullIndex(job.data, job);
+    if (job.name === "incremental-index") return handleIncrementalIndex(job.data, job);
   },
   { connection: redisConnection }
 );
 
-async function handleFullIndex({ repoId }) {
+worker.on("completed", (job) => {
+  console.log(`[IndexedWorker] Job ${job.id} (${job.name}) completed successfully!`);
+});
+
+worker.on("failed", (job, err) => {
+  console.log(`[IndexedWorker] Job ${job.id} (${job.name}) failed with error: ${err.message}`);
+  console.log(`[IndexedWorker] Attempts made: ${job.attemptsMade} / 3`);
+});
+
+worker.on("error", (err) => {
+  console.error(`[IndexedWorker] Uncaught worker error:`, err);
+});
+
+async function handleFullIndex({ repoId }, job) {
+  await job.updateProgress(10);
   const repo = await Repo.findById(repoId);
   const octokit = octokitForInstallation(repo.installationId);
 
+  console.log(`[IndexedWorker] Starting full index for ${repo.owner}/${repo.name}...`);
   const files = await fetchRepoFiles(octokit, repo.owner, repo.name, repo.defaultBranch);
+  console.log(`[IndexedWorker] Fetched ${files.length} files. Sending to AI service for embedding...`);
+  
+  await job.updateProgress(50);
 
-  await axios.post(`${process.env.AI_SERVICE_URL}/index`, {
+  await axios.post(`${process.env.AI_SERVICES_URL}/index`, {
     namespace: repo.namespace,
     repo_full_name: `${repo.owner}/${repo.name}`,
     files,
@@ -41,11 +64,15 @@ async function handleFullIndex({ repoId }) {
     repoId: repo._id,
     message: `Completed full knowledge base indexing for repository`
   });
+  console.log(`[IndexedWorker] Successfully fully indexed ${repo.owner}/${repo.name}!`);
+  await job.updateProgress(100);
 }
 
-async function handleIncrementalIndex({ repoId, commits }) {
+async function handleIncrementalIndex({ repoId, commits }, job) {
+  await job.updateProgress(10);
   const repo = await Repo.findById(repoId);
   const octokit = octokitForInstallation(repo.installationId);
+  console.log(`[IndexedWorker] Starting incremental index for ${repo.owner}/${repo.name} with ${commits.length} commits...`);
 
   const changedPaths = new Set();
   const removedPaths = new Set();
@@ -69,7 +96,10 @@ async function handleIncrementalIndex({ repoId, commits }) {
     }
   }
 
-  await axios.post(`${process.env.AI_SERVICE_URL}/reindex`, {
+  console.log(`[IndexedWorker] Fetched ${files.length} modified/added files. Sending to AI service to reindex...`);
+  await job.updateProgress(50);
+
+  await axios.post(`${process.env.AI_SERVICES_URL}/reindex`, {
     namespace: repo.namespace,
     repo_full_name: `${repo.owner}/${repo.name}`,
     files,
@@ -84,6 +114,8 @@ async function handleIncrementalIndex({ repoId, commits }) {
     repoId: repo._id,
     message: `Updated knowledge base index with ${commits.length} new commit(s)`
   });
+  console.log(`[IndexedWorker] Successfully incrementally indexed ${repo.owner}/${repo.name}!`);
+  await job.updateProgress(100);
 }
 
 function isSkippable(path) {

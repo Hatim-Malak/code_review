@@ -1,6 +1,7 @@
 // Backend/src/controller/repo.controller.js
 import Repo from "../models/repo.model.js";
 import Review from "../models/review.model.js";
+import Installation from "../models/installation.model.js";
 import { octokitForInstallation } from "../lib/githubAuth.js";
 import { reviewQueue } from "../lib/queue.js";
 
@@ -25,10 +26,11 @@ export const getRepoPRs = async(req, res) => {
   const repo = await Repo.findOne({ owner, name: repoName });
   if (!repo) return res.status(404).json({ message: "repo not connected" });
 
-  // Temporarily disable collaborator check since users don't have a githubLogin field yet
-  // if (!(await isCollaborator(req.user.githubLogin, repo))) {
-  //   return res.status(403).json({ message: "not authorized for this repo" });
-  // }
+  // Ensure the user owns this repo's installation
+  const installation = await Installation.findOne({ installationId: repo.installationId, userId: req.user._id });
+  if (!installation) {
+    return res.status(403).json({ message: "not authorized for this repo" });
+  }
 
   const reviews = await Review.find({ repoId: repo._id }).sort({ createdAt: -1 });
   res.json(
@@ -60,10 +62,11 @@ export const getRepoReview = async(req, res) => {
   const repo = await Repo.findOne({ owner, name: repoName });
   if (!repo) return res.status(404).json({ message: "repo not connected" });
 
-  // Temporarily disable collaborator check since users don't have a githubLogin field yet
-  // if (!(await isCollaborator(req.user.githubLogin, repo))) {
-  //   return res.status(403).json({ message: "not authorized for this repo" });
-  // }
+  // Ensure the user owns this repo's installation
+  const installation = await Installation.findOne({ installationId: repo.installationId, userId: req.user._id });
+  if (!installation) {
+    return res.status(403).json({ message: "not authorized for this repo" });
+  }
 
   const review = await Review.findOne({ repoId: repo._id, prNumber: Number(number) }).sort({ createdAt: -1 });
   if (!review) return res.status(404).json({ message: "no review found for this PR" });
@@ -84,7 +87,17 @@ export const getRepoReview = async(req, res) => {
 
 export const getUserRepos = async (req, res) => {
   try {
+    const userInstallations = await Installation.find({ userId: req.user._id });
+    const validInstallationIds = userInstallations.map(i => i.installationId);
+    
+    // First, find all repos the user owns
+    const userRepos = await Repo.find({ installationId: { $in: validInstallationIds } });
+    const userRepoIds = userRepos.map(r => r._id);
+
     const reposWithReviews = await Review.aggregate([
+      {
+        $match: { repoId: { $in: userRepoIds } }
+      },
       {
         $group: {
           _id: "$repoId",
@@ -128,7 +141,22 @@ export const getUserRepos = async (req, res) => {
       }
     ]);
 
-    res.json(reposWithReviews);
+    // Merge with userRepos to ensure repos with 0 reviews are still shown
+    const reposWithReviewsMap = new Map(reposWithReviews.map(r => [r._id.toString(), r]));
+    
+    const allUserRepos = userRepos.map(repo => {
+      const reviewData = reposWithReviewsMap.get(repo._id.toString());
+      return {
+        _id: repo._id,
+        owner: repo.owner,
+        name: repo.name,
+        latestReviewDate: reviewData ? reviewData.latestReviewDate : repo.updatedAt,
+        attentionCount: reviewData ? reviewData.attentionCount : 0,
+        lastIndexedAt: repo.lastIndexedSha ? repo.updatedAt : null
+      };
+    }).sort((a, b) => new Date(b.latestReviewDate) - new Date(a.latestReviewDate));
+
+    res.json(allUserRepos);
   } catch (error) {
     console.error("Error fetching repos:", error);
     res.status(500).json({ message: "Failed to fetch repos" });
@@ -181,6 +209,20 @@ export const reRunReview = async (req, res) => {
     res.json({ message: "Review job re-queued" });
   } catch (error) {
     console.error("Error re-running review:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+export const getIndexingStatus = async (req, res) => {
+  try {
+    const userInstallations = await Installation.find({ userId: req.user._id });
+    const validInstallationIds = userInstallations.map(i => i.installationId);
+
+    const total = await Repo.countDocuments({ installationId: { $in: validInstallationIds } });
+    const indexed = await Repo.countDocuments({ installationId: { $in: validInstallationIds }, lastIndexedSha: { $ne: null } });
+    res.json({ total, indexed, progress: total > 0 ? Math.round((indexed / total) * 100) : 0 });
+  } catch (error) {
+    console.error("Error fetching indexing status:", error);
     res.status(500).json({ message: "Internal server error" });
   }
 };

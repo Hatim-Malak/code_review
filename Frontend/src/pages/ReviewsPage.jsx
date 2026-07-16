@@ -48,6 +48,10 @@ const ReviewsPage = () => {
     loadReviewDetail,
     clearSelection,
     clearReviewDetail,
+    connectSocket,
+    disconnectSocket,
+    indexingStatus,
+    fetchIndexingStatus,
   } = useReviewStore();
 
   const [searchQuery, setSearchQuery] = useState("");
@@ -59,6 +63,8 @@ const ReviewsPage = () => {
 
   useEffect(() => {
     loadRepos();
+    connectSocket();
+    fetchIndexingStatus();
     
     // Fetch global stats and activities for the right sidebar
     const fetchDashboard = async () => {
@@ -73,6 +79,8 @@ const ReviewsPage = () => {
       }
     };
     fetchDashboard();
+    
+    return () => disconnectSocket();
   }, []);
 
   const filteredRepos = repos.filter(repo => 
@@ -132,30 +140,19 @@ const ReviewsPage = () => {
         <title>Reviews | HatMind AI</title>
         <meta name="description" content="View AI-powered code reviews for your GitHub pull requests." />
       </Helmet>
-      <CustomNavbar logo="./HatMind.jpg" items={navItems} dashboardMode={true} />
 
       <div className="flex-1 overflow-hidden">
         <div className="h-full flex">
           {/* Left Panel - Repo List */}
           <div className="w-72 border-r border-greenDark/10 bg-white/30 overflow-auto p-4 pt-6 pb-6 hidden md:flex md:flex-col">
-            {/* Logo inside sidebar for desktop */}
-            <a href="/" className="flex items-center gap-2 mb-8 group px-1 cursor-pointer">
-              <img 
-                src="./HatMind.jpg" 
-                alt="Logo" 
-                className="h-10 w-auto rounded-xl object-contain shadow-sm transition-transform group-hover:scale-105" 
-              />
-              <span className="text-2xl font-black tracking-tighter text-greenDark">
-                HatMind
-              </span>
-            </a>
+
 
             <div className="flex items-center justify-between mb-4 px-1">
               <h2 className="text-lg font-black text-greenDark">
                 Repositories
               </h2>
               <a
-                href="https://github.com/apps/hatmind-rag/installations/new"
+                href={`https://github.com/apps/hatmind-rag/installations/new?state=${authUser?._id}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="p-2 bg-greenDark/10 hover:bg-greenDark/20 text-greenDark rounded-xl transition-colors"
@@ -202,8 +199,17 @@ const ReviewsPage = () => {
             )}
           </div>
 
-          {/* Middle Panel - Content */}
-          <div className="flex-1 overflow-auto p-6 pt-[100px] pb-8 bg-cream/50 relative border-r border-greenDark/10">
+          {/* Right Section (Navbar + Content Panels) */}
+          <div className="flex-1 flex flex-col relative h-full overflow-hidden">
+            <CustomNavbar 
+              logo="./HatMind.jpg" 
+              items={navItems} 
+              dashboardMode={true} 
+              indexingStatus={indexingStatus}
+            />
+            <div className="flex-1 flex h-full overflow-hidden">
+              {/* Middle Panel - Content */}
+              <div className="flex-1 overflow-auto p-6 pt-6 pb-8 bg-cream/50 relative border-r border-greenDark/10">
             {!selectedRepo ? (
               <div className="flex flex-col items-center justify-center h-full text-center p-4">
                 <div className="relative group max-w-lg w-full">
@@ -229,7 +235,7 @@ const ReviewsPage = () => {
                     </p>
                     {repos.length === 0 && (
                       <a
-                        href="https://github.com/apps/hatmind-rag/installations/new"
+                        href={`https://github.com/apps/hatmind-rag/installations/new?state=${authUser?._id}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="px-8 py-4 bg-greenDark text-cream font-bold rounded-2xl hover:bg-greenLight hover:text-white transition-all duration-300 flex items-center gap-3 shadow-lg hover:shadow-xl transform hover:-translate-y-1"
@@ -317,7 +323,7 @@ const ReviewsPage = () => {
           </div>
           
           {/* Third Panel - Activity & Stats */}
-          <div className="w-80 lg:w-96 bg-white/40 overflow-y-auto p-4 pt-[100px] pb-8 hidden xl:flex xl:flex-col gap-6">
+          <div className="w-80 lg:w-96 bg-white/40 overflow-y-auto p-4 pt-4 pb-8 hidden xl:flex xl:flex-col gap-6">
             
             {/* Stats Grid */}
             <div className="flex flex-col gap-3">
@@ -387,6 +393,8 @@ const ReviewsPage = () => {
               </div>
             </div>
             
+          </div>
+            </div>
           </div>
         </div>
       </div>

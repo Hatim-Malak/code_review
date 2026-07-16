@@ -10,6 +10,8 @@ import activityRoutes from "./routes/activity.route.js";
 import { connectdb } from "./lib/db.js";
 import { Server } from "socket.io";
 import { createServer } from "http";
+import { QueueEvents } from "bullmq";
+import { redisConnection } from "./lib/redisConnection.js";
 
 const app = express();
 dotenv.config();
@@ -54,6 +56,28 @@ io.on("connection", (socket) => {
   socket.on("disconnect", () => {
     console.log("Client disconnected:", socket.id);
   });
+});
+
+// Setup QueueEvents for real-time indexing progress
+// QueueEvents MUST have its own dedicated Redis connection (BullMQ requirement)
+import Redis from "ioredis";
+const queueEventsConnection = new Redis(process.env.UPSTASH_REDIS_URL, {
+  maxRetriesPerRequest: null,
+});
+const indexQueueEvents = new QueueEvents("index-repo", { connection: queueEventsConnection });
+console.log("[Server] QueueEvents listener attached for index-repo queue");
+
+indexQueueEvents.on("progress", ({ jobId, data }) => {
+  console.log(`[QueueEvents] Progress event: jobId=${jobId}, progress=${data}`);
+  io.emit("indexingProgress", { jobId, progress: data, status: "indexing" });
+});
+indexQueueEvents.on("completed", ({ jobId }) => {
+  console.log(`[QueueEvents] Completed event: jobId=${jobId}`);
+  io.emit("indexingProgress", { jobId, progress: 100, status: "completed" });
+});
+indexQueueEvents.on("failed", ({ jobId, failedReason }) => {
+  console.log(`[QueueEvents] Failed event: jobId=${jobId}, reason=${failedReason}`);
+  io.emit("indexingProgress", { jobId, progress: 0, status: "failed", error: failedReason });
 });
 
 const PORT = process.env.PORT;

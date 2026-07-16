@@ -14,7 +14,7 @@ from pinecone import Pinecone, ServerlessSpec
 from langchain_core.tools import tool
 from langchain_core.prompts import ChatPromptTemplate
 from typing_extensions import TypedDict
-from langchain_core.output_parsers import StrOutputParser
+from langchain_core.output_parsers import StrOutputParser, JsonOutputParser
 import re
 from ingestion import ingest_repo_files,reindex_repo_files
 
@@ -115,16 +115,18 @@ GROUNDING_RULE = (
 )
 
 
-def _safe_structured_invoke(llm, messages, fallback, node_name: str = "llm_call"):
-    """Invokes a structured-output LLM call and falls back safely if parsing fails."""
-    try:
-        return llm.invoke(messages)
-    except Exception as e:
-        print(f"[{node_name}_warning] structured output failed, using fallback: {e}")
-        return fallback
+def _safe_structured_invoke(llm, messages, fallback, node_name: str = "llm_call", retries: int = 2):
+    """Invokes a structured-output LLM call with retries, and falls back safely if all attempts fail."""
+    for attempt in range(retries):
+        try:
+            return llm.invoke(messages)
+        except Exception as e:
+            print(f"[{node_name}_warning] structured output attempt {attempt + 1}/{retries} failed: {e}")
+    print(f"[{node_name}_warning] all {retries} attempts failed, using fallback")
+    return fallback
 
 
-multiquery_llm = ChatGroq(model="openai/gpt-oss-20b", temperature=0.3).with_structured_output(MultiQueries)
+multiquery_llm = ChatGroq(model="openai/gpt-oss-20b", temperature=0.3).with_structured_output(MultiQueries, method="json_mode")
 
 
 def _generate_multi_queries(query: str) -> list[str]:
@@ -134,7 +136,8 @@ def _generate_multi_queries(query: str) -> list[str]:
             "You are a query-expansion assistant for a technical codebase/documentation search tool. "
             "Given a user query, produce exactly 3 alternative phrasings that use different technical "
             "terms or synonyms a developer or the documentation might use, while preserving the original "
-            "meaning. Do not answer the query and do not add details it does not imply."
+            "meaning. Do not answer the query and do not add details it does not imply.\n"
+            "CRITICAL: You MUST use the provided tool/function to structure your output. Do not respond with plain text."
         )),
         HumanMessage(content=f"Query: {query}")
     ]
@@ -235,10 +238,10 @@ def build_agent_graph(model_name: str):
     """
     Initializes LLMs and compiles the LangGraph based on the requested model.
     """
-    router_llm = ChatGroq(model=model_name, temperature=0).with_structured_output(RouteDecision)
-    judge_llm = ChatGroq(model=model_name, temperature=0).with_structured_output(RagJudge)
+    router_llm = ChatGroq(model=model_name, temperature=0).with_structured_output(RouteDecision, method="json_mode")
+    judge_llm = ChatGroq(model=model_name, temperature=0).with_structured_output(RagJudge, method="json_mode")
     answer_llm = ChatGroq(model=model_name, temperature=0.2, max_tokens=1024)
-    language_checking_llm = ChatGroq(model=model_name, temperature=0).with_structured_output(CheckLanguage)
+    language_checking_llm = ChatGroq(model=model_name, temperature=0).with_structured_output(CheckLanguage, method="json_mode")
     fast_llm = ChatGroq(model="openai/gpt-oss-20b", temperature=0)
 
     def language_checking_node(state: AgentState) -> AgentState:
@@ -263,7 +266,8 @@ def build_agent_graph(model_name: str):
                 "- History about pandas CSV parsing; query 'what about excel files?' -> true (follow-up)\n"
                 "- History about pandas CSV parsing; query 'do you know about the Himalayas?' -> false (new, unrelated topic)\n"
                 "- No history; query 'hello' -> false\n"
-                "- No history; query 'how do I reverse a list?' -> true"
+                "- No history; query 'how do I reverse a list?' -> true\n"
+                "CRITICAL: You MUST use the provided tool/function to structure your output. Do not respond with plain text."
             )),
             HumanMessage(content=f"Current query: {state['query']}{history_block}")
         ]
@@ -285,7 +289,8 @@ def build_agent_graph(model_name: str):
                 "- 'answer': ONLY for basic conceptual definitions needing no code at all "
                 "(e.g. 'what is a variable?', 'define OOP').\n"
                 "- 'end': ONLY for pure pleasantries ('hello', 'thanks'). Must include a short 'reply'.\n\n"
-                "Set 'reply' to null unless route is 'end'. Do not add any field beyond route and reply."
+                "Set 'reply' to null unless route is 'end'. Do not add any field beyond route and reply.\n"
+                "CRITICAL: You MUST use the provided tool/function to structure your output. Do not respond with plain text."
             )),
             HumanMessage(content=state["query"])
         ]
@@ -309,7 +314,8 @@ def build_agent_graph(model_name: str):
                 "You are a strict, evidence-only judge. Decide whether the 'Retrieved info' below — and "
                 "ONLY that text — is enough to fully and accurately answer the question. Do not use "
                 "outside knowledge and do not fill in missing details yourself. If the retrieved info is "
-                "partial, tangential, or ambiguous, mark it insufficient."
+                "partial, tangential, or ambiguous, mark it insufficient.\n"
+                "CRITICAL: You MUST use the provided tool/function to structure your output. Do not respond with plain text."
             )),
             HumanMessage(content=f"Question: {state['query']}\n\nRetrieved info:\n{chunks_str}")
         ]
@@ -463,7 +469,7 @@ class ReviewRequest(BaseModel):
     namespace: str
     repo_full_name: str
     files: list[DiffFile]
-    model_name: str = "llama-3.1-8b-instant"
+    model_name: str = "openai/gpt-oss-20b"
 
 
 class ReviewFinding(BaseModel):
@@ -575,7 +581,7 @@ review_llm_cache: dict[str, Any] = {}
 
 def get_review_llm(model_name: str):
     if model_name not in review_llm_cache:
-        review_llm_cache[model_name] = ChatGroq(model=model_name, temperature=0).with_structured_output(HunkReview)
+        review_llm_cache[model_name] = ChatGroq(model=model_name, temperature=0)
     return review_llm_cache[model_name]
 
 IMPORT_RE = re.compile(r"^[+-]\s*(import|from)\s")
@@ -612,6 +618,8 @@ def _review_rag_search(query: str, repo_namespace: str) -> list[dict]:
     return _rerank(query, list(candidate_pool.values()), top_n=3)
 
 
+review_parser = JsonOutputParser(pydantic_object=HunkReview)
+
 def _review_hunk(model_name: str, filename: str, hunk_text: str, context_chunks: list[dict]) -> HunkReview:
     context_str = "\n\n".join(
         f"[{c.get('file_path') or c['source']}] {c['text']}" for c in context_chunks
@@ -623,12 +631,26 @@ def _review_hunk(model_name: str, filename: str, hunk_text: str, context_chunks:
             "of changes) from a pull request diff, plus retrieved context from the project's own codebase "
             "and general best-practice knowledge. Flag an issue ONLY if it is specific and grounded in the "
             f"diff or the given context — never invent a problem to have something to say. {GROUNDING_RULE}\n"
-            "If you are not confident the issue is real, or you are just hedging your bets, set has_issue to False."
+            "If you are not confident the issue is real, or you are just hedging your bets, set has_issue to False.\n"
+            "CRITICAL: You must output your final review as a valid JSON object matching the schema below. "
+            f"\n{review_parser.get_format_instructions()}"
         )),
         HumanMessage(content=f"File: {filename}\n\nDiff hunk:\n{hunk_text}\n\nRetrieved context:\n{context_str}")
     ]
     fallback = HunkReview(has_issue=False, severity="info", comment="")
-    return _safe_structured_invoke(get_review_llm(model_name), messages, fallback, "hunk_review")
+    
+    llm = get_review_llm(model_name)
+    retries = 2
+    for attempt in range(retries):
+        try:
+            response = llm.invoke(messages)
+            parsed = review_parser.invoke(response)
+            return HunkReview(**parsed)
+        except Exception as e:
+            print(f"[hunk_review_warning] manual parse attempt {attempt + 1}/{retries} failed: {e}")
+            
+    print(f"[hunk_review_warning] all {retries} attempts failed, using fallback")
+    return fallback
 
 
 MAX_HUNKS_PER_REVIEW = 40
