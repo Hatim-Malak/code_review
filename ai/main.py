@@ -18,6 +18,7 @@ from typing_extensions import TypedDict
 from langchain_core.output_parsers import StrOutputParser, JsonOutputParser
 import re
 from ingestion import ingest_repo_files,reindex_repo_files
+import uvicorn
 
 load_dotenv()
 
@@ -745,3 +746,6 @@ def _process_review_background(data: ReviewRequest):
 def review_pr(data: ReviewRequest, background_tasks: BackgroundTasks):
     background_tasks.add_task(_process_review_background, data)
     return {"status": "processing"}
+
+if __name__ == "__main__":
+    uvicorn.run("main:app", host="0.0.0.0", port=8000)
