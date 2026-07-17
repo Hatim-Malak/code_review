@@ -111,7 +111,7 @@ const PORT = process.env.PORT;
 
 // IMPORTANT: mounted before express.json(). This route needs the raw request
 // body untouched to verify GitHub's HMAC signature — its own router applies
-// express.raw() internally. If the global json() parser ran first, it would
+// express.raw() internally. If the global json() parser ran first, it woul
 // already have consumed and parsed the body, leaving nothing for raw() to read.
 app.use("/api/github", githubRoutes);
 

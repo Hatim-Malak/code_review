@@ -1,7 +1,7 @@
 
 
 
-export const postCheckRun =async (octokit,repo,headsha,{status,findings}) =>{
+export const postCheckRun =async (octokit,repo,headSha,{status,findings}) =>{
     const annotations = (findings||[]).slice(0,50).map((f)=>({
         path:f.file,
          start_line: f.startLine,
