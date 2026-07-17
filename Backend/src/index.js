@@ -24,6 +24,7 @@ process.on("uncaughtException", () => {
 });
 
 const app = express();
+app.set("trust proxy", 1);
 dotenv.config();
 const allowedOrigins = [
   "http://localhost:5173", //for development
