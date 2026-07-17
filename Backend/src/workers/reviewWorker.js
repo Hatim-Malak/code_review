@@ -10,22 +10,17 @@ import { redisConnection } from "../lib/redisConnection.js";
 import { connectdb } from "../lib/db.js";
 import logger from "../lib/logger.js";
 
-process.on("uncaughtException", (err) => {
-  logger.error("Uncaught Exception in reviewWorker — exiting", err);
+process.on("uncaughtException", () => {
   setTimeout(() => process.exit(1), 500);
 });
 
-process.on("unhandledRejection", (reason, promise) => {
-  logger.error("Unhandled Rejection in reviewWorker", { reason, promise });
-});
-
 connectdb();
-console.log("Review worker started, waiting for jobs...");
+logger.info("Review worker started, waiting for jobs...");
 
 new Worker(
     "review-pr",
     async(job)=>{
-        console.log(`Processing review job for PR #${job.data.prNumber}`);
+        logger.info(`Processing review job for PR #${job.data.prNumber}`);
         const {repoId,installationId,prNumber,headSha} = job.data
         const repo = await Repo.findById(repoId)
         
@@ -94,7 +89,7 @@ new Worker(
             },
             { upsert: true, new: true }
         )
-        console.log(`Saved initial review state to DB for PR #${prNumber}`);
+        logger.info(`Saved initial review state to DB for PR #${prNumber}`);
 
         try {
             const backendUrl = process.env.BACKEND_URL || "http://localhost:5000";
@@ -108,7 +103,7 @@ new Worker(
             }, {
                 timeout: 240000 // 4 minutes timeout to comfortably handle up to 40 hunks
             });
-            console.log(`[ReviewWorker] Successfully dispatched AI background review for PR #${prNumber}`);
+            logger.info(`[ReviewWorker] Successfully dispatched AI background review for PR #${prNumber}`);
         } catch (error) {
             logger.error(`[ReviewWorker] AI Service failed for PR #${prNumber}: ${error.message}`);
             review.status = "failed";
@@ -131,12 +126,12 @@ function isGeneratedOrVendored(path) {
   return /(^|\/)(dist|build|vendor|node_modules)\//.test(path) || /\.(lock|min\.js)$/.test(path);
 }
 
-console.log("Sweep worker started, waiting for jobs...");
+logger.info("Sweep worker started, waiting for jobs...");
 
 new Worker(
     "sweep-stuck-reviews",
     async (job) => {
-        console.log("Running reconciliation sweep for stuck reviews...");
+        logger.info("Running reconciliation sweep for stuck reviews...");
         
         // Find reviews stuck in 'in_progress' for more than 10 minutes
         const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
@@ -147,11 +142,11 @@ new Worker(
         });
 
         if (stuckReviews.length === 0) {
-            console.log("No stuck reviews found.");
+            logger.info("No stuck reviews found.");
             return;
         }
 
-        console.log(`Found ${stuckReviews.length} stuck reviews. Failing them.`);
+        logger.info(`Found ${stuckReviews.length} stuck reviews. Failing them.`);
 
         for (const review of stuckReviews) {
             review.status = "failed";

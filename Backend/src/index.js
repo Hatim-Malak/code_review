@@ -15,13 +15,12 @@ import { redisConnection } from "./lib/redisConnection.js";
 import { requestLogger, errorLogger } from "./middleware/logger.middleware.js";
 import logger from "./lib/logger.js";
 
-process.on("uncaughtException", (err) => {
-  logger.error("Uncaught Exception — exiting", err);
-  setTimeout(() => process.exit(1), 500); // Wait for winston to flush
-});
-
-process.on("unhandledRejection", (reason, promise) => {
-  logger.error("Unhandled Rejection", { reason, promise });
+// Supplementary uncaughtException handler.
+// Winston natively catches, formats, and logs exceptions to our transports.
+// Since we have `exitOnError: false` configured, Winston leaves the process alive.
+// This enforces the hard exit 500ms later to give Winston time to flush the log.
+process.on("uncaughtException", () => {
+  setTimeout(() => process.exit(1), 500); 
 });
 
 const app = express();
@@ -58,15 +57,15 @@ const io = new Server(server, {
 
 app.locals.io = io;
 io.on("connection", (socket) => {
-  console.log("Client connected:", socket.id);
+  logger.info(`Client connected: ${socket.id}`);
 
   socket.on("joinUserRoom", (userId) => {
     socket.join(userId);
-    console.log(`Socket ${socket.id} joined room ${userId}`);
+    logger.info(`Socket ${socket.id} joined room ${userId}`);
   });
 
   socket.on("disconnect", () => {
-    console.log("Client disconnected:", socket.id);
+    logger.info(`Client disconnected: ${socket.id}`);
   });
 });
 
@@ -78,33 +77,33 @@ const queueEventsConnection = new Redis(process.env.UPSTASH_REDIS_URL, {
 });
 const indexQueueEvents = new QueueEvents("index-repo", { connection: queueEventsConnection });
 const reviewQueueEvents = new QueueEvents("review-pr", { connection: queueEventsConnection });
-console.log("[Server] QueueEvents listeners attached for index-repo and review-pr queues");
+logger.info("[Server] QueueEvents listeners attached for index-repo and review-pr queues");
 
 queueEventsConnection.on("error", (err) => {
   logger.warn(`QueueEvents Redis connection error: ${err.message}`);
 });
 
 indexQueueEvents.on("progress", ({ jobId, data }) => {
-  console.log(`[QueueEvents] Progress event: jobId=${jobId}, progress=${data}`);
+  logger.debug(`[QueueEvents] Progress event: jobId=${jobId}, progress=${data}`);
   io.emit("indexingProgress", { jobId, progress: data, status: "indexing" });
 });
 indexQueueEvents.on("completed", ({ jobId }) => {
-  console.log(`[QueueEvents] Completed event: jobId=${jobId}`);
+  logger.info(`[QueueEvents] Completed event: jobId=${jobId}`);
   io.emit("indexingProgress", { jobId, progress: 100, status: "completed" });
   io.emit("dashboardUpdate", { type: "index_completed", jobId });
 });
 indexQueueEvents.on("failed", ({ jobId, failedReason }) => {
-  console.log(`[QueueEvents] Failed event: jobId=${jobId}, reason=${failedReason}`);
+  logger.error(`[QueueEvents] Failed event: jobId=${jobId}, reason=${failedReason}`);
   io.emit("indexingProgress", { jobId, progress: 0, status: "failed", error: failedReason });
   io.emit("dashboardUpdate", { type: "index_failed", jobId });
 });
 
 reviewQueueEvents.on("active", ({ jobId }) => {
-  console.log(`[QueueEvents] Review started: jobId=${jobId}`);
+  logger.info(`[QueueEvents] Review started: jobId=${jobId}`);
   io.emit("dashboardUpdate", { type: "review_started", jobId });
 });
 reviewQueueEvents.on("completed", ({ jobId }) => {
-  console.log(`[QueueEvents] Review completed: jobId=${jobId}`);
+  logger.info(`[QueueEvents] Review completed: jobId=${jobId}`);
   io.emit("dashboardUpdate", { type: "review_completed", jobId });
 });
 
@@ -125,6 +124,6 @@ app.use("/api/activity", activityRoutes);
 app.use(errorLogger);
 
 server.listen(PORT, () => {
-  console.log("The server is running on the port ", PORT);
+  logger.info(`The server is running on the port ${PORT}`);
   connectdb();
 });

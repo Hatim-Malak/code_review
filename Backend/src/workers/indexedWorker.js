@@ -9,22 +9,17 @@ import { redisConnection } from "../lib/redisConnection.js";
 import { connectdb } from "../lib/db.js";
 import logger from "../lib/logger.js";
 
-process.on("uncaughtException", (err) => {
-  logger.error("Uncaught Exception in indexedWorker — exiting", err);
+process.on("uncaughtException", () => {
   setTimeout(() => process.exit(1), 500);
 });
 
-process.on("unhandledRejection", (reason, promise) => {
-  logger.error("Unhandled Rejection in indexedWorker", { reason, promise });
-});
-
 connectdb();
-console.log("[IndexedWorker] Index worker started, waiting for jobs...");
+logger.info("[IndexedWorker] Index worker started, waiting for jobs...");
 
 const worker = new Worker(
   "index-repo",
   async (job) => {
-    console.log(`[IndexedWorker] Picked up job: ${job.name} for repoId: ${job.data.repoId}`);
+    logger.info(`[IndexedWorker] Picked up job: ${job.name} for repoId: ${job.data.repoId}`);
     if (job.name === "full-index") return handleFullIndex(job.data, job);
     if (job.name === "incremental-index") return handleIncrementalIndex(job.data, job);
   },
@@ -32,12 +27,12 @@ const worker = new Worker(
 );
 
 worker.on("completed", (job) => {
-  console.log(`[IndexedWorker] Job ${job.id} (${job.name}) completed successfully!`);
+  logger.info(`[IndexedWorker] Job ${job.id} (${job.name}) completed successfully!`);
 });
 
 worker.on("failed", (job, err) => {
-  console.log(`[IndexedWorker] Job ${job.id} (${job.name}) failed with error: ${err.message}`);
-  console.log(`[IndexedWorker] Attempts made: ${job.attemptsMade} / 3`);
+  logger.info(`[IndexedWorker] Job ${job.id} (${job.name}) failed with error: ${err.message}`);
+  logger.info(`[IndexedWorker] Attempts made: ${job.attemptsMade} / 3`);
 });
 
 worker.on("error", (err) => {
@@ -49,9 +44,9 @@ async function handleFullIndex({ repoId }, job) {
   const repo = await Repo.findById(repoId);
   const octokit = octokitForInstallation(repo.installationId);
 
-  console.log(`[IndexedWorker] Starting full index for ${repo.owner}/${repo.name}...`);
+  logger.info(`[IndexedWorker] Starting full index for ${repo.owner}/${repo.name}...`);
   const files = await fetchRepoFiles(octokit, repo.owner, repo.name, repo.defaultBranch);
-  console.log(`[IndexedWorker] Fetched ${files.length} files. Sending to AI service for embedding...`);
+  logger.info(`[IndexedWorker] Fetched ${files.length} files. Sending to AI service for embedding...`);
   
   await job.updateProgress(50);
 
@@ -74,7 +69,7 @@ async function handleFullIndex({ repoId }, job) {
     repoId: repo._id,
     message: `Completed full knowledge base indexing for repository`
   });
-  console.log(`[IndexedWorker] Successfully fully indexed ${repo.owner}/${repo.name}!`);
+  logger.info(`[IndexedWorker] Successfully fully indexed ${repo.owner}/${repo.name}!`);
   await job.updateProgress(100);
 }
 
@@ -82,7 +77,9 @@ async function handleIncrementalIndex({ repoId, commits }, job) {
   await job.updateProgress(10);
   const repo = await Repo.findById(repoId);
   const octokit = octokitForInstallation(repo.installationId);
-  console.log(`[IndexedWorker] Starting incremental index for ${repo.owner}/${repo.name} with ${commits.length} commits...`);
+  logger.info(`[IndexedWorker] Starting incremental index for ${repo.owner}/${repo.name} with ${commits.length} commits...`);
+  //...
+  // Note: the chunk only spans the exact lines, wait, if I use AllowMultiple I can just replace `logger.info(` with `logger.info(`.
 
   const changedPaths = new Set();
   const removedPaths = new Set();
@@ -106,7 +103,7 @@ async function handleIncrementalIndex({ repoId, commits }, job) {
     }
   }
 
-  console.log(`[IndexedWorker] Fetched ${files.length} modified/added files. Sending to AI service to reindex...`);
+  logger.info(`[IndexedWorker] Fetched ${files.length} modified/added files. Sending to AI service to reindex...`);
   await job.updateProgress(50);
 
   await axios.post(`${process.env.AI_SERVICES_URL}/reindex`, {
@@ -124,7 +121,7 @@ async function handleIncrementalIndex({ repoId, commits }, job) {
     repoId: repo._id,
     message: `Updated knowledge base index with ${commits.length} new commit(s)`
   });
-  console.log(`[IndexedWorker] Successfully incrementally indexed ${repo.owner}/${repo.name}!`);
+  logger.info(`[IndexedWorker] Successfully incrementally indexed ${repo.owner}/${repo.name}!`);
   await job.updateProgress(100);
 }
 

@@ -1,4 +1,5 @@
 import winston from "winston";
+import "winston-daily-rotate-file";
 import path from "path";
 import { fileURLToPath } from "url";
 
@@ -15,10 +16,11 @@ const levels = {
 };
 
 // Define level based on environment
+const env = process.env.NODE_ENV || "development";
+const isProduction = env === "production";
+
 const level = () => {
-  const env = process.env.NODE_ENV || "development";
-  const isDevelopment = env === "development";
-  return isDevelopment ? "debug" : "warn";
+  return isProduction ? "warn" : "debug";
 };
 
 // Define colors for each level
@@ -47,25 +49,65 @@ const fileFormat = winston.format.combine(
   winston.format.json()
 );
 
-const transports = [
-  new winston.transports.Console({
-    format: consoleFormat,
-  }),
-  new winston.transports.File({
-    filename: path.join(__dirname, "../../logs/error.log"),
+const transports = [];
+const exceptionHandlers = [];
+const rejectionHandlers = [];
+
+if (isProduction) {
+  // Docker-idiomatic logging: everything goes to stdout/stderr in JSON format
+  const prodTransport = new winston.transports.Console({ format: fileFormat });
+  transports.push(prodTransport);
+  exceptionHandlers.push(prodTransport);
+  rejectionHandlers.push(prodTransport);
+} else {
+  // Development: Console (human-readable) + Rotated Files
+  transports.push(new winston.transports.Console({ format: consoleFormat }));
+  
+  transports.push(new winston.transports.DailyRotateFile({
+    filename: path.join(__dirname, "../../logs/error-%DATE%.log"),
     level: "error",
+    datePattern: "YYYY-MM-DD",
+    zippedArchive: true,
+    maxSize: "20m",
+    maxFiles: "14d",
     format: fileFormat,
-  }),
-  new winston.transports.File({
-    filename: path.join(__dirname, "../../logs/all.log"),
+  }));
+
+  transports.push(new winston.transports.DailyRotateFile({
+    filename: path.join(__dirname, "../../logs/application-%DATE%.log"),
+    datePattern: "YYYY-MM-DD",
+    zippedArchive: true,
+    maxSize: "20m",
+    maxFiles: "14d",
     format: fileFormat,
-  }),
-];
+  }));
+
+  exceptionHandlers.push(new winston.transports.DailyRotateFile({
+    filename: path.join(__dirname, "../../logs/exceptions-%DATE%.log"),
+    datePattern: "YYYY-MM-DD",
+    zippedArchive: true,
+    maxSize: "20m",
+    maxFiles: "14d",
+    format: fileFormat,
+  }));
+
+  rejectionHandlers.push(new winston.transports.DailyRotateFile({
+    filename: path.join(__dirname, "../../logs/rejections-%DATE%.log"),
+    datePattern: "YYYY-MM-DD",
+    zippedArchive: true,
+    maxSize: "20m",
+    maxFiles: "14d",
+    format: fileFormat,
+  }));
+}
 
 const logger = winston.createLogger({
   level: level(),
   levels,
   transports,
+  exceptionHandlers,
+  rejectionHandlers,
+  exitOnError: false, // Prevents Winston from dictating process exits natively
 });
 
 export default logger;
