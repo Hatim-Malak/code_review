@@ -91,6 +91,8 @@ export const handleWbhook = async (req, res) => {
       break;
     }
   }
+  
+  req.app.locals.io.emit("dashboardUpdate", { type: "github_webhook", event });
 };
 
 export const linkInstallation = async (req, res) => {

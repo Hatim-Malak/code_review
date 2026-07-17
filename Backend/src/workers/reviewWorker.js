@@ -54,21 +54,52 @@ new Worker(
                 },
                 headSha,
                 status: "in_progress",
-                findings: [] // reset findings on new run
             },
             { upsert: true, new: true }
         )
         console.log(`Saved initial review state to DB for PR #${prNumber}`);
 
-        const {data} = await axios.post(`${process.env.AI_SERVICES_URL}/review`,{
-            namespace: repo.namespace,
-            repo_full_name: `${repo.owner}/${repo.name}`,
-            files: diffFiles,
-            model_name: "openai/gpt-oss-20b"
-        })
+        let data;
+        try {
+            const response = await axios.post(`${process.env.AI_SERVICES_URL}/review`,{
+                namespace: repo.namespace,
+                repo_full_name: `${repo.owner}/${repo.name}`,
+                files: diffFiles,
+                model_name: "llama-3.1-8b-instant"
+            });
+            data = response.data;
+        } catch (error) {
+            console.error(`[ReviewWorker] AI Service failed for PR #${prNumber}:`, error.message);
+            review.status = "failed";
+            await review.save();
+            
+            await Activity.create({
+                type: "review_failed",
+                repoId: repo._id,
+                prNumber,
+                message: `Review failed for PR #${prNumber} due to AI service error`
+            });
+            
+            throw error; // Let BullMQ retry
+        }
 
         review.status = "completed"
-        review.findings = data.findings;
+        
+        // Merge findings to preserve resolved state
+        const mergedFindings = data.findings.map(newF => {
+            const existingF = review.findings.find(oldF => 
+                oldF.file === newF.file &&
+                oldF.startLine === newF.startLine &&
+                oldF.endLine === newF.endLine &&
+                oldF.comment === newF.comment
+            );
+            if (existingF) {
+                return { ...newF, _id: existingF._id, resolved: existingF.resolved };
+            }
+            return newF;
+        });
+        
+        review.findings = mergedFindings;
         await review.save();
         console.log(`Review completed for PR #${prNumber}`);
 

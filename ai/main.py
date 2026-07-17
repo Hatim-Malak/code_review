@@ -4,6 +4,7 @@ import os
 from pydantic import BaseModel, Field
 from langchain_huggingface import HuggingFaceEndpointEmbeddings
 from dotenv import load_dotenv
+import time
 from langgraph.graph import END, START, StateGraph
 from sentence_transformers import CrossEncoder
 from typing import Literal, List, Dict, Any
@@ -56,6 +57,16 @@ embeddings = HuggingFaceEndpointEmbeddings(
 )
 tavily = TavilySearch(max_results=3, topic='general')
 
+def _embed_with_retry(func, *args, retries=5, backoff=2, **kwargs):
+    for attempt in range(retries):
+        try:
+            return func(*args, **kwargs)
+        except Exception as e:
+            if attempt == retries - 1:
+                raise e
+            print(f"Embedding failed (Rate limit?), sleeping {backoff}s... (Attempt {attempt+1}/{retries})")
+            time.sleep(backoff)
+            backoff *= 2
 
 class AIQuery(BaseModel):
     query: str
@@ -125,8 +136,7 @@ def _safe_structured_invoke(llm, messages, fallback, node_name: str = "llm_call"
     print(f"[{node_name}_warning] all {retries} attempts failed, using fallback")
     return fallback
 
-
-multiquery_llm = ChatGroq(model="openai/gpt-oss-20b", temperature=0.3).with_structured_output(MultiQueries, method="json_mode")
+multiquery_llm = ChatGroq(model="llama-3.1-8b-instant", temperature=0.3).with_structured_output(MultiQueries, method="json_mode")
 
 
 def _generate_multi_queries(query: str) -> list[str]:
@@ -242,7 +252,7 @@ def build_agent_graph(model_name: str):
     judge_llm = ChatGroq(model=model_name, temperature=0).with_structured_output(RagJudge, method="json_mode")
     answer_llm = ChatGroq(model=model_name, temperature=0.2, max_tokens=1024)
     language_checking_llm = ChatGroq(model=model_name, temperature=0).with_structured_output(CheckLanguage, method="json_mode")
-    fast_llm = ChatGroq(model="openai/gpt-oss-20b", temperature=0)
+    fast_llm = ChatGroq(model="llama-3.1-8b-instant", temperature=0)
 
     def language_checking_node(state: AgentState) -> AgentState:
         history_block = (
@@ -469,7 +479,7 @@ class ReviewRequest(BaseModel):
     namespace: str
     repo_full_name: str
     files: list[DiffFile]
-    model_name: str = "openai/gpt-oss-20b"
+    model_name: str = "llama-3.1-8b-instant"
 
 
 class ReviewFinding(BaseModel):
@@ -556,7 +566,8 @@ def _split_patch_into_hunks(patch: str) -> list[dict]:
 def index_repo(data: IndexRequest):
     try:
         files = [f.dict() for f in data.files]
-        count = ingest_repo_files(data.repo_full_name, data.namespace, files, index, embeddings.embed_documents)
+        embed_fn = lambda texts: _embed_with_retry(embeddings.embed_documents, texts)
+        count = ingest_repo_files(data.repo_full_name, data.namespace, files, index, embed_fn)
         return {"indexed": count}
     except Exception as e:
         print(f"error in /index {e}")
@@ -567,9 +578,10 @@ def index_repo(data: IndexRequest):
 def reindex_repo(data: ReindexRequest):
     try:
         files = [f.dict() for f in data.files]
+        embed_fn = lambda texts: _embed_with_retry(embeddings.embed_documents, texts)
         count = reindex_repo_files(
             data.repo_full_name, data.namespace, files, data.removed_paths,
-            index, embeddings.embed_documents,
+            index, embed_fn,
         )
         return {"reindexed": count, "removed": len(data.removed_paths)}
     except Exception as e:
@@ -598,7 +610,7 @@ def _review_rag_search(query: str, repo_namespace: str) -> list[dict]:
     """Single embedding call instead of multi-query expansion — a diff hunk
     is already specific text, unlike a short ambiguous chat question, so
     paraphrasing it into 3 variants buys little recall for real token cost."""
-    query_vector = embeddings.embed_query(query)  # zero LLM calls
+    query_vector = _embed_with_retry(embeddings.embed_query, query)  # zero LLM calls
         
     candidate_pool: Dict[str, Dict[str, Any]] = {}
     for ns in (repo_namespace, None):
@@ -647,6 +659,10 @@ def _review_hunk(model_name: str, filename: str, hunk_text: str, context_chunks:
             parsed = review_parser.invoke(response)
             return HunkReview(**parsed)
         except Exception as e:
+            err_str = str(e).lower()
+            if "429" in err_str or "rate limit" in err_str:
+                print(f"[hunk_review_error] Rate limit exceeded. Aborting review to allow worker retry.")
+                raise e
             print(f"[hunk_review_warning] manual parse attempt {attempt + 1}/{retries} failed: {e}")
             
     print(f"[hunk_review_warning] all {retries} attempts failed, using fallback")
@@ -675,6 +691,9 @@ def review_pr(data: ReviewRequest):
             query = f"Review this change in {file.filename}:\n{hunk['text']}"
             context_chunks = _review_rag_search(query, repo_namespace=data.namespace)
             review = _review_hunk(data.model_name, file.filename, hunk["text"], context_chunks)
+            
+            # Delay to prevent hitting Tokens Per Minute (TPM) limits on the AI provider
+            time.sleep(2)
 
             if not review.has_issue:
                 continue

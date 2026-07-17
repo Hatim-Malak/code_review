@@ -65,7 +65,8 @@ const queueEventsConnection = new Redis(process.env.UPSTASH_REDIS_URL, {
   maxRetriesPerRequest: null,
 });
 const indexQueueEvents = new QueueEvents("index-repo", { connection: queueEventsConnection });
-console.log("[Server] QueueEvents listener attached for index-repo queue");
+const reviewQueueEvents = new QueueEvents("review-pr", { connection: queueEventsConnection });
+console.log("[Server] QueueEvents listeners attached for index-repo and review-pr queues");
 
 indexQueueEvents.on("progress", ({ jobId, data }) => {
   console.log(`[QueueEvents] Progress event: jobId=${jobId}, progress=${data}`);
@@ -74,10 +75,21 @@ indexQueueEvents.on("progress", ({ jobId, data }) => {
 indexQueueEvents.on("completed", ({ jobId }) => {
   console.log(`[QueueEvents] Completed event: jobId=${jobId}`);
   io.emit("indexingProgress", { jobId, progress: 100, status: "completed" });
+  io.emit("dashboardUpdate", { type: "index_completed", jobId });
 });
 indexQueueEvents.on("failed", ({ jobId, failedReason }) => {
   console.log(`[QueueEvents] Failed event: jobId=${jobId}, reason=${failedReason}`);
   io.emit("indexingProgress", { jobId, progress: 0, status: "failed", error: failedReason });
+  io.emit("dashboardUpdate", { type: "index_failed", jobId });
+});
+
+reviewQueueEvents.on("active", ({ jobId }) => {
+  console.log(`[QueueEvents] Review started: jobId=${jobId}`);
+  io.emit("dashboardUpdate", { type: "review_started", jobId });
+});
+reviewQueueEvents.on("completed", ({ jobId }) => {
+  console.log(`[QueueEvents] Review completed: jobId=${jobId}`);
+  io.emit("dashboardUpdate", { type: "review_completed", jobId });
 });
 
 const PORT = process.env.PORT;

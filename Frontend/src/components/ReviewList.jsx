@@ -107,11 +107,6 @@ const ReviewList = ({ reviews, onSelect, isLoading }) => {
           </div>
           <div className="flex flex-col items-end gap-3 flex-shrink-0">
             <StatusBadge status={getDisplayStatus(review.status, review.severityBreakdown)} />
-            {review.hasBlocking && (
-              <span className="text-[10px] font-bold text-red-600 bg-red-100 px-2 py-0.5 rounded-full border border-red-200 shadow-sm">
-                Blocking
-              </span>
-            )}
           </div>
         </button>
       ))}

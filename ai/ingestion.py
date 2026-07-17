@@ -353,6 +353,8 @@ def ingest_repo_files(repo_full_name: str, namespace: str, files: list[dict], in
             namespace=namespace,
         )
         total += len(batch)
+        print(f"Indexed {len(batch)} chunks, sleeping 2s to avoid rate limits...")
+        time.sleep(2)
     return total
 
 

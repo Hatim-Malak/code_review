@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { AlertTriangle, Info, XCircle, FileCode2, Terminal, Code2, ChevronDown, ChevronUp, CheckSquare, Square } from "lucide-react";
+import { AlertTriangle, Info, XCircle, FileCode2, Terminal, Code2, ChevronDown, ChevronUp, CheckSquare, Square, Copy, Check } from "lucide-react";
 
 const severityConfig = {
   error: {
@@ -21,6 +21,14 @@ const severityConfig = {
 
 const FindingCard = ({ finding, onToggleResolve }) => {
   const [showDiff, setShowDiff] = useState(false);
+  const [isCopied, setIsCopied] = useState(false);
+  
+  const handleCopy = () => {
+    navigator.clipboard.writeText(finding.suggestedFix);
+    setIsCopied(true);
+    setTimeout(() => setIsCopied(false), 2000);
+  };
+  
   const config = severityConfig[finding.severity] || severityConfig.info;
 
   return (
@@ -68,11 +76,20 @@ const FindingCard = ({ finding, onToggleResolve }) => {
       {/* Suggested Fix section */}
       {finding.suggestedFix && (
         <div className="mx-4 md:mx-5 mb-5 rounded-xl overflow-hidden border border-greenDark/90 shadow-md">
-          <div className="flex items-center bg-greenDark px-4 py-2 border-b border-white/10">
-            <Terminal size={14} className="text-cream/70 mr-2" />
-            <span className="text-xs font-bold text-cream/80 uppercase tracking-widest">
-              Suggested Fix
-            </span>
+          <div className="flex items-center justify-between bg-greenDark px-4 py-2 border-b border-white/10">
+            <div className="flex items-center">
+              <Terminal size={14} className="text-cream/70 mr-2" />
+              <span className="text-xs font-bold text-cream/80 uppercase tracking-widest">
+                Suggested Fix
+              </span>
+            </div>
+            <button
+              onClick={handleCopy}
+              className="flex items-center gap-1.5 px-2 py-1 rounded bg-white/10 hover:bg-white/20 text-cream/80 hover:text-cream transition-colors text-[10px] font-bold uppercase tracking-wider"
+            >
+              {isCopied ? <Check size={12} /> : <Copy size={12} />}
+              {isCopied ? "Copied" : "Copy"}
+            </button>
           </div>
           <div className="bg-[#1a1f1c] p-4 overflow-x-auto">
             <pre className="text-sm md:text-[15px] text-cream/90 font-mono whitespace-pre-wrap leading-relaxed">

@@ -52,32 +52,34 @@ const ReviewsPage = () => {
     disconnectSocket,
     indexingStatus,
     fetchIndexingStatus,
+    dashboardStats,
+    activities,
+    isLoadingDashboard,
+    fetchDashboard,
   } = useReviewStore();
 
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
-  
-  const [dashboardStats, setDashboardStats] = useState(null);
-  const [activities, setActivities] = useState([]);
-  const [isLoadingDashboard, setIsLoadingDashboard] = useState(true);
+
+  const handleActivityClick = (act) => {
+    if (act.repoId) {
+      // Find the repo from the loaded repos array
+      const repo = repos.find(r => r._id === (act.repoId._id || act.repoId));
+      if (repo) {
+        selectRepo(repo);
+        if (act.prNumber) {
+          // Because Zustand's set() is synchronous, selectRepo immediately updates the state,
+          // allowing loadReviewDetail to access the newly selected repo.
+          loadReviewDetail(act.prNumber);
+        }
+      }
+    }
+  };
 
   useEffect(() => {
     loadRepos();
     connectSocket();
     fetchIndexingStatus();
-    
-    // Fetch global stats and activities for the right sidebar
-    const fetchDashboard = async () => {
-      try {
-        const res = await axiosInstance.get("/activity");
-        setDashboardStats(res.data.stats);
-        setActivities(res.data.activities);
-      } catch (err) {
-        console.error("Failed to load dashboard data", err);
-      } finally {
-        setIsLoadingDashboard(false);
-      }
-    };
     fetchDashboard();
     
     return () => disconnectSocket();
@@ -371,7 +373,11 @@ const ReviewsPage = () => {
                   <div className="text-xs text-greenDark/50 text-center py-8">No recent activity.</div>
                 ) : (
                   activities.map(act => (
-                    <div key={act._id} className="p-3 bg-white/70 border border-greenDark/5 rounded-xl shadow-sm flex gap-3 items-start hover:bg-white transition-colors">
+                    <button 
+                      key={act._id} 
+                      onClick={() => handleActivityClick(act)}
+                      className="p-3 bg-white/70 border border-greenDark/5 rounded-xl shadow-sm flex gap-3 items-start hover:bg-white text-left transition-colors w-full cursor-pointer focus:outline-none focus:ring-2 focus:ring-greenDark/20"
+                    >
                       <div className="mt-1 p-1.5 bg-greenLight/10 rounded-full shrink-0">
                         <ActivityIcon type={act.type} />
                       </div>
@@ -387,7 +393,7 @@ const ReviewsPage = () => {
                         <p className="text-xs text-greenDark/80 leading-snug">{act.message}</p>
                         <span className="text-[10px] font-semibold text-greenDark/40 mt-0.5">{timeAgo(act.createdAt)}</span>
                       </div>
-                    </div>
+                    </button>
                   ))
                 )}
               </div>

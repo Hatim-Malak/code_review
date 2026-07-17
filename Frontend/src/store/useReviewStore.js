@@ -12,6 +12,10 @@ export const useReviewStore = create((set, get) => ({
   isLoadingReviews: false,
   isLoadingReviewDetail: false,
   
+  dashboardStats: null,
+  activities: [],
+  isLoadingDashboard: true,
+  
   // Indexing progress state — always visible, shows overall repo indexing status
   indexingStatus: { total: 0, indexed: 0, progress: 0, isActive: false },
   socket: null,
@@ -23,6 +27,18 @@ export const useReviewStore = create((set, get) => ({
       set({ indexingStatus: { total, indexed, progress, isActive: indexed < total } });
     } catch (error) {
       console.error("Error fetching indexing status:", error);
+    }
+  },
+
+  fetchDashboard: async () => {
+    try {
+      set({ isLoadingDashboard: true });
+      const res = await axiosInstance.get("/activity");
+      set({ dashboardStats: res.data.stats, activities: res.data.activities });
+    } catch (err) {
+      console.error("Failed to load dashboard data", err);
+    } finally {
+      set({ isLoadingDashboard: false });
     }
   },
 
@@ -45,6 +61,13 @@ export const useReviewStore = create((set, get) => ({
       } else if (data.status === "failed") {
         toast.error("Repository indexing failed.");
       }
+    });
+
+    socket.on("dashboardUpdate", (data) => {
+      console.log("dashboardUpdate event received:", data);
+      get().loadRepos();
+      get().fetchDashboard();
+      get().loadReviews();
     });
 
     set({ socket });

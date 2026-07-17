@@ -1,4 +1,5 @@
-import { ArrowLeft, ShieldCheck, Loader2, AlertCircle, RefreshCw } from "lucide-react";
+import { useState } from "react";
+import { ArrowLeft, ShieldCheck, Loader2, AlertCircle, RefreshCw, ChevronUp, ChevronDown, FileCode2 } from "lucide-react";
 import StatusBadge from "./StatusBadge.jsx";
 import FindingCard from "./FindingCard.jsx";
 import { getDisplayStatus } from "../utils/statusLogic.js";
@@ -19,6 +20,36 @@ const SkeletonReviewDetail = () => (
   </div>
 );
 
+const FileFindingsGroup = ({ file, findings, toggleFindingResolve }) => {
+  const [isExpanded, setIsExpanded] = useState(true);
+  
+  return (
+    <div className="flex flex-col gap-2 mb-4">
+      <button 
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="flex items-center gap-3 w-full bg-white/60 p-3 rounded-xl border border-greenDark/10 hover:bg-white/90 transition-colors focus:outline-none focus:ring-2 focus:ring-greenDark/20"
+      >
+        <div className="p-2 bg-greenLight/10 rounded-lg">
+          <FileCode2 size={16} className="text-greenDark/80" />
+        </div>
+        <div className="flex flex-col items-start flex-1 text-left overflow-hidden">
+          <span className="font-mono text-sm font-bold text-greenDark truncate w-full">{file}</span>
+          <span className="text-[10px] font-semibold text-greenDark/50 uppercase tracking-wider">{findings.length} finding{findings.length !== 1 ? 's' : ''}</span>
+        </div>
+        {isExpanded ? <ChevronUp size={16} className="text-greenDark/60" /> : <ChevronDown size={16} className="text-greenDark/60" />}
+      </button>
+      
+      {isExpanded && (
+        <div className="flex flex-col gap-2 pl-2 md:pl-4 border-l-2 border-greenDark/10 ml-3 md:ml-5 mt-1">
+          {findings.map((finding, idx) => (
+            <FindingCard key={finding._id || idx} finding={finding} onToggleResolve={toggleFindingResolve} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const ReviewDetail = ({ review, onBack, isLoading }) => {
   const toggleFindingResolve = useReviewStore(state => state.toggleFindingResolve);
   const reRunReview = useReviewStore(state => state.reRunReview);
@@ -30,6 +61,13 @@ const ReviewDetail = ({ review, onBack, isLoading }) => {
   if (!review) return null;
 
   const displayStatus = getDisplayStatus(review.status, review.severityBreakdown);
+
+  // Group findings by file
+  const findingsByFile = review?.findings?.reduce((acc, finding) => {
+    if (!acc[finding.file]) acc[finding.file] = [];
+    acc[finding.file].push(finding);
+    return acc;
+  }, {}) || {};
 
   return (
     <div className="flex flex-col gap-6">
@@ -110,8 +148,13 @@ const ReviewDetail = ({ review, onBack, isLoading }) => {
             </div>
           )
         ) : (
-          review.findings.map((finding, idx) => (
-            <FindingCard key={finding._id || idx} finding={finding} onToggleResolve={toggleFindingResolve} />
+          Object.entries(findingsByFile).map(([file, fileFindings]) => (
+            <FileFindingsGroup 
+              key={file} 
+              file={file} 
+              findings={fileFindings} 
+              toggleFindingResolve={toggleFindingResolve} 
+            />
           ))
         )}
       </div>
