@@ -1,4 +1,5 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, BackgroundTasks
+import httpx
 from fastapi.middleware.cors import CORSMiddleware
 import os
 from pydantic import BaseModel, Field
@@ -480,6 +481,8 @@ class ReviewRequest(BaseModel):
     repo_full_name: str
     files: list[DiffFile]
     model_name: str = "llama-3.3-70b-versatile"
+    callback_url: str
+    callback_token: str
 
 
 class ReviewFinding(BaseModel):
@@ -643,17 +646,28 @@ def _review_hunk(model_name: str, filename: str, hunk_text: str, context_chunks:
     fallback = HunkReview(has_issue=False, severity="info", comment="")
     
     llm = get_review_llm(model_name)
-    retries = 2
+    retries = 3
     for attempt in range(retries):
         try:
             response = llm.invoke(messages)
             parsed = review_parser.invoke(response)
+            
+            # Extract rate limit headers from Groq response metadata if available
+            # langchain_groq puts response metadata in the message object
+            # If we are close to the limit, we sleep
+            rate_limit_remaining = response.response_metadata.get("rate_limit", {}).get("remaining_requests")
+            if rate_limit_remaining is not None and int(rate_limit_remaining) < 10:
+                print(f"[rate_limit] Nearing Groq limit ({rate_limit_remaining} left). Sleeping 5s.")
+                time.sleep(5)
+                
             return HunkReview(**parsed)
         except Exception as e:
             err_str = str(e).lower()
             if "429" in err_str or "rate limit" in err_str:
-                print(f"[hunk_review_error] Rate limit exceeded. Aborting review to allow worker retry.")
-                raise e
+                sleep_time = 10 * (attempt + 1)
+                print(f"[hunk_review_error] Rate limit exceeded. Sleeping {sleep_time}s and retrying...")
+                time.sleep(sleep_time)
+                continue
             print(f"[hunk_review_warning] manual parse attempt {attempt + 1}/{retries} failed: {e}")
             
     print(f"[hunk_review_warning] all {retries} attempts failed, using fallback")
@@ -662,9 +676,7 @@ def _review_hunk(model_name: str, filename: str, hunk_text: str, context_chunks:
 
 MAX_HUNKS_PER_REVIEW = 40
 
-
-@app.post("/review", response_model=ReviewResult)
-def review_pr(data: ReviewRequest):
+def _process_review_background(data: ReviewRequest):
     all_findings: list[ReviewFinding] = []
     all_sources: set[str] = set()
     hunks_processed = 0
@@ -680,9 +692,6 @@ def review_pr(data: ReviewRequest):
             query = f"Review this change in {file.filename}:\n{hunk['text']}"
             context_chunks = _review_rag_search(query, repo_namespace=data.namespace)
             review = _review_hunk(data.model_name, file.filename, hunk["text"], context_chunks)
-            
-            # Delay to prevent hitting Tokens Per Minute (TPM) limits on the AI provider
-            time.sleep(2)
 
             if not review.has_issue:
                 continue
@@ -698,4 +707,19 @@ def review_pr(data: ReviewRequest):
             ))
             all_sources.update(c.get("file_path") or c["source"] for c in context_chunks)
 
-    return ReviewResult(findings=all_findings, rag_sources=list(all_sources))
+    result = ReviewResult(findings=all_findings, rag_sources=list(all_sources))
+    
+    try:
+        httpx.post(
+            data.callback_url,
+            json=result.dict(),
+            headers={"Authorization": f"Bearer {data.callback_token}"},
+            timeout=30,
+        )
+    except Exception as e:
+        print(f"[review_callback_error] failed to deliver result to {data.callback_url}: {e}")
+
+@app.post("/review")
+def review_pr(data: ReviewRequest, background_tasks: BackgroundTasks):
+    background_tasks.add_task(_process_review_background, data)
+    return {"status": "processing"}

@@ -23,4 +23,6 @@ const activitySchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+activitySchema.index({ repoId: 1, createdAt: -1 });
+
 export default mongoose.model("Activity", activitySchema);

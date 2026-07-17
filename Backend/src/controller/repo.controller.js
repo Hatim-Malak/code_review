@@ -4,6 +4,8 @@ import Review from "../models/review.model.js";
 import Installation from "../models/installation.model.js";
 import { octokitForInstallation } from "../lib/githubAuth.js";
 import { reviewQueue } from "../lib/queue.js";
+import Activity from "../models/activity.model.js";
+import { postCheckRun } from "../lib/githubChecks.js";
 
 const isCollaborator = async(githubLogin, repo) => {
   if (!githubLogin) return false;
@@ -32,7 +34,14 @@ export const getRepoPRs = async(req, res) => {
     return res.status(403).json({ message: "not authorized for this repo" });
   }
 
-  const reviews = await Review.find({ repoId: repo._id }).sort({ createdAt: -1 });
+  const page = parseInt(req.query.page) || 1;
+  const limit = parseInt(req.query.limit) || 20;
+  const skip = (page - 1) * limit;
+
+  const reviews = await Review.find({ repoId: repo._id })
+    .sort({ createdAt: -1 })
+    .skip(skip)
+    .limit(limit);
   res.json(
     reviews.map((r) => {
       const errorCount = r.findings.filter(f => f.severity === 'error').length;
@@ -171,6 +180,12 @@ export const toggleFindingResolve = async (req, res) => {
     const repo = await Repo.findOne({ owner, name: repoName });
     if (!repo) return res.status(404).json({ message: "repo not connected" });
 
+    // Ensure the user owns this repo's installation
+    const installation = await Installation.findOne({ installationId: repo.installationId, userId: req.user._id });
+    if (!installation) {
+      return res.status(403).json({ message: "not authorized for this repo" });
+    }
+
     const review = await Review.findOne({ repoId: repo._id, prNumber: Number(number) });
     if (!review) return res.status(404).json({ message: "no review found for this PR" });
 
@@ -192,6 +207,12 @@ export const reRunReview = async (req, res) => {
     const { owner, repo: repoName, number } = req.params;
     const repo = await Repo.findOne({ owner, name: repoName });
     if (!repo) return res.status(404).json({ message: "repo not connected" });
+
+    // Ensure the user owns this repo's installation
+    const installation = await Installation.findOne({ installationId: repo.installationId, userId: req.user._id });
+    if (!installation) {
+      return res.status(403).json({ message: "not authorized for this repo" });
+    }
 
     const review = await Review.findOne({ repoId: repo._id, prNumber: Number(number) }).sort({ createdAt: -1 });
     if (!review) return res.status(404).json({ message: "no review found for this PR" });
@@ -223,6 +244,64 @@ export const getIndexingStatus = async (req, res) => {
     res.json({ total, indexed, progress: total > 0 ? Math.round((indexed / total) * 100) : 0 });
   } catch (error) {
     console.error("Error fetching indexing status:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+export const handleAiReviewWebhook = async (req, res) => {
+  try {
+    const expectedSecret = process.env.AI_CALLBACK_SECRET || "default_secret_for_dev";
+    const authHeader = req.headers.authorization;
+    if (!authHeader || authHeader !== `Bearer ${expectedSecret}`) {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+
+    const { repoId, prNumber, headSha } = req.query;
+    const { findings, rag_sources } = req.body;
+
+    if (!repoId || !prNumber || !headSha) {
+      return res.status(400).json({ message: "Missing required query params" });
+    }
+
+    const repo = await Repo.findById(repoId);
+    if (!repo) return res.status(404).json({ message: "Repo not found" });
+
+    const review = await Review.findOne({ repoId: repo._id, prNumber: Number(prNumber) });
+    if (!review) return res.status(404).json({ message: "Review not found" });
+
+    // Merge findings to preserve resolved state
+    const mergedFindings = findings.map(newF => {
+      const existingF = review.findings.find(oldF => 
+          oldF.file === newF.file &&
+          oldF.startLine === newF.startLine &&
+          oldF.endLine === newF.endLine &&
+          oldF.comment === newF.comment
+      );
+      if (existingF) {
+          return { ...newF, _id: existingF._id, resolved: existingF.resolved };
+      }
+      return newF;
+    });
+
+    review.findings = mergedFindings;
+    review.status = "completed";
+    await review.save();
+
+    await Activity.create({
+      type: findings.length === 0 ? "pr_merged_clean" : "review_completed",
+      repoId: repo._id,
+      prNumber: Number(prNumber),
+      message: findings.length === 0 
+          ? `PR #${prNumber} passed review with 0 findings` 
+          : `Completed review for PR #${prNumber} with ${findings.length} finding(s)`
+    });
+
+    const octokit = octokitForInstallation(repo.installationId);
+    await postCheckRun(octokit, repo, headSha, { status: "completed", findings });
+
+    res.status(200).json({ message: "Webhook processed successfully" });
+  } catch (error) {
+    console.error("Error processing AI webhook:", error);
     res.status(500).json({ message: "Internal server error" });
   }
 };

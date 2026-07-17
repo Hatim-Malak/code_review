@@ -56,9 +56,13 @@ const ReviewsPage = () => {
     activities,
     isLoadingDashboard,
     fetchDashboard,
+    reviewsPage,
+    hasMoreReviews,
+    loadReviews,
   } = useReviewStore();
 
   const [searchQuery, setSearchQuery] = useState("");
+  const [prSearchQuery, setPrSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
 
   const handleActivityClick = (act) => {
@@ -109,11 +113,21 @@ const ReviewsPage = () => {
   const attentionCount = reviews.filter(r => r.findingCount > 0).length;
 
   const getFilteredReviews = () => {
-    if (statusFilter === "All") return reviews;
-    if (statusFilter === "Clean") return reviews.filter(r => r.status === 'completed' && r.findingCount === 0);
-    if (statusFilter === "Needs Attention") return reviews.filter(r => r.status === 'completed' && r.findingCount > 0);
-    if (statusFilter === "In Progress") return reviews.filter(r => r.status === 'in_progress' || r.status === 'pending');
-    return reviews;
+    let result = reviews;
+    if (prSearchQuery) {
+      const q = prSearchQuery.toLowerCase();
+      result = result.filter(r => 
+        (r.prTitle && r.prTitle.toLowerCase().includes(q)) || 
+        (r.prAuthor && r.prAuthor.name.toLowerCase().includes(q)) ||
+        (r.prNumber && r.prNumber.toString().includes(q))
+      );
+    }
+
+    if (statusFilter === "All") return result;
+    if (statusFilter === "Clean") return result.filter(r => r.status === 'completed' && r.findingCount === 0);
+    if (statusFilter === "Needs Attention") return result.filter(r => r.status === 'completed' && r.findingCount > 0);
+    if (statusFilter === "In Progress") return result.filter(r => r.status === 'in_progress' || r.status === 'pending');
+    return result;
   };
 
   const displayedReviews = getFilteredReviews();
@@ -292,18 +306,32 @@ const ReviewsPage = () => {
                       </div>
                     )}
                     
-                    {/* Status Filters */}
-                    {!isLoadingReviews && reviews.length > 0 && (
-                      <div className="flex gap-2 mt-2">
-                        {["All", "Needs Attention", "Clean", "In Progress"].map(filter => (
-                          <button
-                            key={filter}
-                            onClick={() => setStatusFilter(filter)}
-                            className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors ${statusFilter === filter ? 'bg-greenDark text-cream' : 'bg-white/60 text-greenDark/60 hover:bg-white hover:text-greenDark border border-greenDark/10'}`}
-                          >
-                            {filter}
-                          </button>
-                        ))}
+                    {/* Status Filters & Search */}
+                    {reviews.length > 0 && (
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mt-2">
+                        <div className="flex gap-2 overflow-x-auto pb-1 sm:pb-0">
+                          {["All", "Needs Attention", "Clean", "In Progress"].map(filter => (
+                            <button
+                              key={filter}
+                              onClick={() => setStatusFilter(filter)}
+                              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors whitespace-nowrap ${statusFilter === filter ? 'bg-greenDark text-cream' : 'bg-white/60 text-greenDark/60 hover:bg-white hover:text-greenDark border border-greenDark/10'}`}
+                            >
+                              {filter}
+                            </button>
+                          ))}
+                        </div>
+                        <div className="relative w-full sm:w-64">
+                          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <Search size={14} className="text-greenDark/40" />
+                          </div>
+                          <input
+                            type="text"
+                            placeholder="Search PRs..."
+                            value={prSearchQuery}
+                            onChange={(e) => setPrSearchQuery(e.target.value)}
+                            className="w-full pl-9 pr-3 py-1.5 bg-white/50 border border-greenDark/10 rounded-xl text-xs font-medium text-greenDark focus:outline-none focus:ring-2 focus:ring-greenLight/50 focus:bg-white transition-all placeholder:text-greenDark/40"
+                          />
+                        </div>
                       </div>
                     )}
                   </div>
@@ -319,6 +347,8 @@ const ReviewsPage = () => {
                   reviews={displayedReviews}
                   onSelect={loadReviewDetail}
                   isLoading={isLoadingReviews}
+                  hasMore={hasMoreReviews}
+                  onLoadMore={() => loadReviews(reviewsPage + 1)}
                 />
               </div>
             )}

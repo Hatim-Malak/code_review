@@ -11,6 +11,8 @@ export const useReviewStore = create((set, get) => ({
   isLoadingRepos: false,
   isLoadingReviews: false,
   isLoadingReviewDetail: false,
+  reviewsPage: 1,
+  hasMoreReviews: true,
   
   dashboardStats: null,
   activities: [],
@@ -95,18 +97,23 @@ export const useReviewStore = create((set, get) => ({
   },
 
   selectRepo: (repo) => {
-    set({ selectedRepo: repo, reviews: [], selectedReview: null });
-    get().loadReviews();
+    set({ selectedRepo: repo, reviews: [], selectedReview: null, reviewsPage: 1, hasMoreReviews: true });
+    get().loadReviews(1);
   },
 
-  loadReviews: async () => {
-    const { selectedRepo } = get();
+  loadReviews: async (page = 1) => {
+    const { selectedRepo, reviews } = get();
     if (!selectedRepo) return;
     
     try {
       set({ isLoadingReviews: true });
-      const res = await axiosInstance.get(`/repos/${selectedRepo.owner}/${selectedRepo.name}/prs`);
-      set({ reviews: res.data });
+      const res = await axiosInstance.get(`/repos/${selectedRepo.owner}/${selectedRepo.name}/prs?page=${page}&limit=20`);
+      
+      set({ 
+        reviews: page === 1 ? res.data : [...reviews, ...res.data],
+        reviewsPage: page,
+        hasMoreReviews: res.data.length === 20
+      });
     } catch (error) {
       console.error("Error loading reviews:", error);
       toast.error("Failed to load reviews");

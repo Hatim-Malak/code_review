@@ -24,5 +24,7 @@ const installationSchema = new mongoose.Schema(
     {timestamps:true}
 );
 
+installationSchema.index({ userId: 1 });
+
 const Installation = mongoose.model("Installation",installationSchema)
 export default Installation

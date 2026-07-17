@@ -15,3 +15,6 @@ export const indexQueue = new Queue("index-repo", {
     backoff: { type: 'exponential', delay: 5000 }
   }
 });
+export const sweepQueue = new Queue("sweep-stuck-reviews", { 
+  connection: redisConnection,
+});

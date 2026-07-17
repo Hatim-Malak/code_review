@@ -39,4 +39,7 @@ const reviewSchema = new mongoose.Schema(
   { timestamps: true },
 );
 
+reviewSchema.index({ repoId: 1, createdAt: -1 });
+reviewSchema.index({ repoId: 1, prNumber: 1 }, { unique: true });
+
 export default mongoose.model("Review", reviewSchema);

@@ -29,5 +29,8 @@ const repoSchema = new mongoose.Schema(
     {timestamps:true}
 );
 
+repoSchema.index({ owner: 1, name: 1 }, { unique: true });
+repoSchema.index({ installationId: 1 });
+
 const Repo = mongoose.model("Repo",repoSchema)
 export default Repo;

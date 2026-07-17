@@ -36,8 +36,8 @@ const timeAgo = (dateString) => {
   return `${Math.floor(months / 12)}y ago`;
 };
 
-const ReviewList = ({ reviews, onSelect, isLoading }) => {
-  if (isLoading) {
+const ReviewList = ({ reviews, onSelect, isLoading, hasMore, onLoadMore }) => {
+  if (isLoading && reviews.length === 0) {
     return <SkeletonReviewList />;
   }
 
@@ -110,6 +110,16 @@ const ReviewList = ({ reviews, onSelect, isLoading }) => {
           </div>
         </button>
       ))}
+      
+      {hasMore && reviews.length > 0 && (
+        <button
+          onClick={onLoadMore}
+          disabled={isLoading}
+          className="mt-4 p-3 w-full bg-greenDark/5 hover:bg-greenDark/10 text-greenDark/80 font-bold rounded-xl transition-colors disabled:opacity-50"
+        >
+          {isLoading ? "Loading..." : "Load More"}
+        </button>
+      )}
     </div>
   );
 };

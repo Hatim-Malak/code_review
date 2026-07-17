@@ -27,5 +27,8 @@ const chatSchema = new mongoose.Schema(
     {timestamps:true}
 )
 
+chatSchema.index({ userId: 1, conversationId: 1, createdAt: 1 });
+chatSchema.index({ userId: 1, createdAt: 1 });
+
 const Chat = mongoose.model("Chat",chatSchema)
 export default Chat
