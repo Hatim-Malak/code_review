@@ -7,7 +7,6 @@ from langchain_huggingface import HuggingFaceEndpointEmbeddings
 from dotenv import load_dotenv
 import time
 from langgraph.graph import END, START, StateGraph
-from sentence_transformers import CrossEncoder
 from typing import Literal, List, Dict, Any
 from langchain_groq import ChatGroq
 from langchain_tavily import TavilySearch
@@ -28,8 +27,7 @@ PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 INDEX_NAME = "kb-index"
 pc = Pinecone(api_key=PINECONE_API_KEY)
 
-print("[rag_init] Loading Cross-Encoder reranker model...")
-reranker = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
+print("[rag_init] Cross-Encoder reranking will use Hugging Face API.")
 
 if INDEX_NAME not in pc.list_indexes().names():
     pc.create_index(
@@ -212,11 +210,35 @@ def _rag_candidates(query: str, source_filter: str = None, namespace: str = None
 def _rerank(query: str, candidates: list[dict], top_n: int = 3) -> list[dict]:
     if not candidates:
         return []
-    rerank_pairs = [[query, item["text"]] for item in candidates]
-    scores = reranker.predict(rerank_pairs)
-    for idx, score in enumerate(scores):
-        candidates[idx]["rerank_score"] = float(score)
-    candidates.sort(key=lambda x: x["rerank_score"], reverse=True)
+    
+    api_url = "https://api-inference.huggingface.co/models/cross-encoder/ms-marco-MiniLM-L-6-v2"
+    headers = {"Authorization": f"Bearer {os.getenv('HF_TOKEN')}"}
+    
+    try:
+        payload = {
+            "inputs": {
+                "source_sentence": query,
+                "sentences": [item["text"] for item in candidates]
+            }
+        }
+        # 15s timeout to allow for potential cold starts
+        response = httpx.post(api_url, headers=headers, json=payload, timeout=15.0)
+        
+        if response.status_code == 200:
+            scores = response.json()
+            for idx, score in enumerate(scores):
+                candidates[idx]["rerank_score"] = float(score)
+        else:
+            print(f"[rerank_warning] HF API returned {response.status_code}: {response.text}")
+            for idx in range(len(candidates)):
+                candidates[idx]["rerank_score"] = 0.0
+                
+    except Exception as e:
+        print(f"[rerank_error] Failed to call HF Inference API: {e}")
+        for idx in range(len(candidates)):
+            candidates[idx]["rerank_score"] = 0.0
+            
+    candidates.sort(key=lambda x: x.get("rerank_score", 0.0), reverse=True)
     return candidates[:top_n]
 
 
