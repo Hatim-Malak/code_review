@@ -28,7 +28,8 @@ dotenv.config();
 const allowedOrigins = [
   "http://localhost:5173", //for development
   "https://starlit-stationary-frontend.vercel.app",
-];
+  process.env.FRONTEND_URL
+].filter(Boolean);
 
 app.use(cookieParser());
 app.use(requestLogger);

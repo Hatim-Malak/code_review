@@ -25,7 +25,8 @@ export const useChat = create((set, get) => ({
       return;
     }
 
-    const socket = io("http://localhost:5000", { withCredentials: true });
+    const backendUrl = import.meta.env.MODE === "development" ? "http://localhost:5000" : "https://hatmind.duckdns.org";
+    const socket = io(backendUrl, { withCredentials: true });
 
     socket.on("connect", () => {
       console.log("Socket connected:", socket.id);
