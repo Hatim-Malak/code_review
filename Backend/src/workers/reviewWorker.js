@@ -8,6 +8,16 @@ import Activity from "../models/activity.model.js"
 import { postCheckRun } from "../lib/githubChecks.js";
 import { redisConnection } from "../lib/redisConnection.js";
 import { connectdb } from "../lib/db.js";
+import logger from "../lib/logger.js";
+
+process.on("uncaughtException", (err) => {
+  logger.error("Uncaught Exception in reviewWorker — exiting", err);
+  setTimeout(() => process.exit(1), 500);
+});
+
+process.on("unhandledRejection", (reason, promise) => {
+  logger.error("Unhandled Rejection in reviewWorker", { reason, promise });
+});
 
 connectdb();
 console.log("Review worker started, waiting for jobs...");
@@ -28,18 +38,44 @@ new Worker(
 
         const octokit = octokitForInstallation(installationId);
 
-        const { data: prData } = await octokit.pulls.get({
-            owner: repo.owner,
-            repo: repo.name,
-            pull_number: prNumber,
-        });
+        let prData;
+        let filesResponse;
 
-        const { data: filesResponse } = await octokit.pulls.listFiles({
-            owner: repo.owner,
-            repo: repo.name,
-            pull_number: prNumber,
-            per_page: 100
-        });
+        try {
+            const prResponse = await octokit.pulls.get({
+                owner: repo.owner,
+                repo: repo.name,
+                pull_number: prNumber,
+            });
+            prData = prResponse.data;
+
+            const filesRes = await octokit.pulls.listFiles({
+                owner: repo.owner,
+                repo: repo.name,
+                pull_number: prNumber,
+                per_page: 100
+            });
+            filesResponse = filesRes.data;
+        } catch (error) {
+            const status = error.status;
+            const isRateLimit = status === 403 && (error.response?.headers?.["x-ratelimit-remaining"] === "0" || error.response?.headers?.["retry-after"]);
+            
+            if (status === 404 || status === 410 || (status === 403 && !isRateLimit)) {
+                // Permanent error: repository deleted, PR closed/missing, or permissions revoked.
+                logger.warn(`Permanent GitHub API error for PR #${prNumber} on repo ${repo.name}. Status: ${status}. Terminating job.`);
+                await Activity.create({
+                    type: "review_failed",
+                    repoId: repo._id,
+                    prNumber,
+                    message: `Review failed: GitHub API returned ${status} (Permanent error).`
+                });
+                return; // Terminate job successfully so it doesn't retry
+            }
+            
+            // Transient error (429, 5xx, or Rate limit 403)
+            logger.warn(`Transient GitHub API error for PR #${prNumber}: ${error.message}. Throwing for BullMQ retry.`);
+            throw error;
+        }
         
         const diffFiles = filesResponse
             .filter((f)=> !isGeneratedOrVendored(f.filename))
@@ -69,10 +105,12 @@ new Worker(
                 model_name: "llama-3.3-70b-versatile",
                 callback_url: `${backendUrl}/api/repos/internal/ai-webhook?repoId=${repo._id}&prNumber=${prNumber}&headSha=${headSha}`,
                 callback_token: process.env.AI_CALLBACK_SECRET || "default_secret_for_dev"
+            }, {
+                timeout: 240000 // 4 minutes timeout to comfortably handle up to 40 hunks
             });
             console.log(`[ReviewWorker] Successfully dispatched AI background review for PR #${prNumber}`);
         } catch (error) {
-            console.error(`[ReviewWorker] AI Service failed to accept request for PR #${prNumber}:`, error.message);
+            logger.error(`[ReviewWorker] AI Service failed for PR #${prNumber}: ${error.message}`);
             review.status = "failed";
             await review.save();
             
@@ -139,4 +177,4 @@ sweepQueue.add(
             every: 5 * 60 * 1000, // 5 minutes
         }
     }
-).catch(err => console.error("Failed to add repeating sweep job:", err));
+).catch(err => logger.error("Failed to add repeating sweep job:", err));

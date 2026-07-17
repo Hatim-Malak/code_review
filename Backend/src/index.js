@@ -12,6 +12,17 @@ import { Server } from "socket.io";
 import { createServer } from "http";
 import { QueueEvents } from "bullmq";
 import { redisConnection } from "./lib/redisConnection.js";
+import { requestLogger, errorLogger } from "./middleware/logger.middleware.js";
+import logger from "./lib/logger.js";
+
+process.on("uncaughtException", (err) => {
+  logger.error("Uncaught Exception — exiting", err);
+  setTimeout(() => process.exit(1), 500); // Wait for winston to flush
+});
+
+process.on("unhandledRejection", (reason, promise) => {
+  logger.error("Unhandled Rejection", { reason, promise });
+});
 
 const app = express();
 dotenv.config();
@@ -21,6 +32,7 @@ const allowedOrigins = [
 ];
 
 app.use(cookieParser());
+app.use(requestLogger);
 app.use(
   cors({
     origin: (origin, callback) => {
@@ -68,6 +80,10 @@ const indexQueueEvents = new QueueEvents("index-repo", { connection: queueEvents
 const reviewQueueEvents = new QueueEvents("review-pr", { connection: queueEventsConnection });
 console.log("[Server] QueueEvents listeners attached for index-repo and review-pr queues");
 
+queueEventsConnection.on("error", (err) => {
+  logger.warn(`QueueEvents Redis connection error: ${err.message}`);
+});
+
 indexQueueEvents.on("progress", ({ jobId, data }) => {
   console.log(`[QueueEvents] Progress event: jobId=${jobId}, progress=${data}`);
   io.emit("indexingProgress", { jobId, progress: data, status: "indexing" });
@@ -105,6 +121,8 @@ app.use("/api/auth", authRoutes);
 app.use("/api/chat", chatRoutes);
 app.use("/api/repos", repoRoutes);
 app.use("/api/activity", activityRoutes);
+
+app.use(errorLogger);
 
 server.listen(PORT, () => {
   console.log("The server is running on the port ", PORT);

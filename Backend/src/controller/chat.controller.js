@@ -2,8 +2,9 @@ import Chat from "../models/chat.model.js";
 import mongoose from "mongoose";
 import axios from "axios";
 import { v4 as uuid4 } from "uuid";
+import logger from "../lib/logger.js";
 
-export const addChat = async (req, res) => {
+export const addChat = async (req, res, next) => {
     try {
         const userId = req.user._id;
         
@@ -72,12 +73,11 @@ export const addChat = async (req, res) => {
             rag_sources: ragSources
         });
     } catch (error) {
-        console.error("error in addChat controller:", error.message);
-        res.status(500).json({ message: "Internal server error" });
+        next(error);
     }
 };
 
-export const getHistory = async (req, res) => {
+export const getHistory = async (req, res, next) => {
     try {
         const userId = req.user._id;
 
@@ -100,12 +100,11 @@ export const getHistory = async (req, res) => {
         
         res.status(200).json(all_chat);
     } catch (error) {
-        console.error("error in getHistory controller:", error.message);
-        res.status(500).json({ message: "Internal server error" });
+        next(error);
     }
 };
 
-export const getSessions = async (req, res) => {
+export const getSessions = async (req, res, next) => {
     try {
         const userId = req.user._id;
 
@@ -146,12 +145,11 @@ export const getSessions = async (req, res) => {
 
         res.status(200).json(sessions);
     } catch (error) {
-        console.error("error in getSessions controller:", error.message);
-        res.status(500).json({ message: "Internal server error" });
+        next(error);
     }
 };
 
-export const deleteSession = async (req, res) => {
+export const deleteSession = async (req, res, next) => {
     try {
         const userId = req.user._id;
         const { converId } = req.params;
@@ -168,7 +166,6 @@ export const deleteSession = async (req, res) => {
 
         res.status(200).json({ message: "conversation deleted successfully" });
     } catch (error) {
-        console.error("error in deleteSession controller:", error.message);
-        res.status(500).json({ message: "Internal server error" });
+        next(error);
     }
 };

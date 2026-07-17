@@ -3,7 +3,7 @@ import Repo from "../models/repo.model.js";
 import Review from "../models/review.model.js";
 import Installation from "../models/installation.model.js";
 
-export const getActivityFeed = async (req, res) => {
+export const getActivityFeed = async (req, res, next) => {
   try {
     const userInstallations = await Installation.find({ userId: req.user._id });
     const validInstallationIds = userInstallations.map(i => i.installationId);
@@ -65,7 +65,6 @@ export const getActivityFeed = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error("Error fetching activity feed:", error);
-    res.status(500).json({ message: "Failed to fetch activity feed" });
+    next(error);
   }
 };

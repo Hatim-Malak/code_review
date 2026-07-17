@@ -26,9 +26,11 @@
     "ioredis": "^5.11.1",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.19.1",
+    "morgan": "^1.11.0",
     "smee-client": "^5.0.0",
     "socket.io": "^4.8.1",
     "tar-stream": "^3.2.0",
-    "uuid": "^13.0.0"
+    "uuid": "^13.0.0",
+    "winston": "^3.19.0"
   }
 }

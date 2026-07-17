@@ -7,6 +7,16 @@ import Repo from "../models/repo.model.js";
 import Activity from "../models/activity.model.js";
 import { redisConnection } from "../lib/redisConnection.js";
 import { connectdb } from "../lib/db.js";
+import logger from "../lib/logger.js";
+
+process.on("uncaughtException", (err) => {
+  logger.error("Uncaught Exception in indexedWorker — exiting", err);
+  setTimeout(() => process.exit(1), 500);
+});
+
+process.on("unhandledRejection", (reason, promise) => {
+  logger.error("Unhandled Rejection in indexedWorker", { reason, promise });
+});
 
 connectdb();
 console.log("[IndexedWorker] Index worker started, waiting for jobs...");
@@ -31,7 +41,7 @@ worker.on("failed", (job, err) => {
 });
 
 worker.on("error", (err) => {
-  console.error(`[IndexedWorker] Uncaught worker error:`, err);
+  logger.error(`[IndexedWorker] Uncaught worker error:`, err);
 });
 
 async function handleFullIndex({ repoId }, job) {

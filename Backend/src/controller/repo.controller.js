@@ -6,6 +6,7 @@ import { octokitForInstallation } from "../lib/githubAuth.js";
 import { reviewQueue } from "../lib/queue.js";
 import Activity from "../models/activity.model.js";
 import { postCheckRun } from "../lib/githubChecks.js";
+import logger from "../lib/logger.js";
 
 const isCollaborator = async(githubLogin, repo) => {
   if (!githubLogin) return false;
@@ -23,78 +24,86 @@ const isCollaborator = async(githubLogin, repo) => {
   }
 }
 
-export const getRepoPRs = async(req, res) => {
-  const { owner, repo: repoName } = req.params;
-  const repo = await Repo.findOne({ owner, name: repoName });
-  if (!repo) return res.status(404).json({ message: "repo not connected" });
+export const getRepoPRs = async(req, res, next) => {
+  try {
+    const { owner, repo: repoName } = req.params;
+    const repo = await Repo.findOne({ owner, name: repoName });
+    if (!repo) return res.status(404).json({ message: "repo not connected" });
 
-  // Ensure the user owns this repo's installation
-  const installation = await Installation.findOne({ installationId: repo.installationId, userId: req.user._id });
-  if (!installation) {
-    return res.status(403).json({ message: "not authorized for this repo" });
+    // Ensure the user owns this repo's installation
+    const installation = await Installation.findOne({ installationId: repo.installationId, userId: req.user._id });
+    if (!installation) {
+      return res.status(403).json({ message: "not authorized for this repo" });
+    }
+
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const skip = (page - 1) * limit;
+
+    const reviews = await Review.find({ repoId: repo._id })
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
+    res.json(
+      reviews.map((r) => {
+        const errorCount = r.findings.filter(f => f.severity === 'error').length;
+        const warningCount = r.findings.filter(f => f.severity === 'warning').length;
+        const infoCount = r.findings.filter(f => f.severity === 'info').length;
+
+        return {
+          prNumber: r.prNumber,
+          prTitle: r.prTitle,
+          prAuthor: r.prAuthor,
+          createdAt: r.createdAt,
+          status: r.status,
+          findingCount: r.findings.length,
+          hasBlocking: errorCount > 0,
+          severityBreakdown: {
+            error: errorCount,
+            warning: warningCount,
+            info: infoCount,
+          }
+        };
+      })
+    );
+  } catch (err) {
+    next(err);
   }
-
-  const page = parseInt(req.query.page) || 1;
-  const limit = parseInt(req.query.limit) || 20;
-  const skip = (page - 1) * limit;
-
-  const reviews = await Review.find({ repoId: repo._id })
-    .sort({ createdAt: -1 })
-    .skip(skip)
-    .limit(limit);
-  res.json(
-    reviews.map((r) => {
-      const errorCount = r.findings.filter(f => f.severity === 'error').length;
-      const warningCount = r.findings.filter(f => f.severity === 'warning').length;
-      const infoCount = r.findings.filter(f => f.severity === 'info').length;
-
-      return {
-        prNumber: r.prNumber,
-        prTitle: r.prTitle,
-        prAuthor: r.prAuthor,
-        createdAt: r.createdAt,
-        status: r.status,
-        findingCount: r.findings.length,
-        hasBlocking: errorCount > 0,
-        severityBreakdown: {
-          error: errorCount,
-          warning: warningCount,
-          info: infoCount,
-        }
-      };
-    })
-  );
 }
 
-export const getRepoReview = async(req, res) => {
-  const { owner, repo: repoName, number } = req.params;
-  const repo = await Repo.findOne({ owner, name: repoName });
-  if (!repo) return res.status(404).json({ message: "repo not connected" });
+export const getRepoReview = async(req, res, next) => {
+  try {
+    const { owner, repo: repoName, number } = req.params;
+    const repo = await Repo.findOne({ owner, name: repoName });
+    if (!repo) return res.status(404).json({ message: "repo not connected" });
 
-  // Ensure the user owns this repo's installation
-  const installation = await Installation.findOne({ installationId: repo.installationId, userId: req.user._id });
-  if (!installation) {
-    return res.status(403).json({ message: "not authorized for this repo" });
+    // Ensure the user owns this repo's installation
+    const installation = await Installation.findOne({ installationId: repo.installationId, userId: req.user._id });
+    if (!installation) {
+      return res.status(403).json({ message: "not authorized for this repo" });
+    }
+
+    const review = await Review.findOne({ repoId: repo._id, prNumber: Number(number) }).sort({ createdAt: -1 });
+    if (!review) return res.status(404).json({ message: "no review found for this PR" });
+
+    const errorCount = review.findings.filter(f => f.severity === 'error').length;
+    const warningCount = review.findings.filter(f => f.severity === 'warning').length;
+    const infoCount = review.findings.filter(f => f.severity === 'info').length;
+
+    const reviewObj = review.toObject();
+    reviewObj.severityBreakdown = {
+      error: errorCount,
+      warning: warningCount,
+      info: infoCount,
+    };
+
+    res.json(reviewObj);
+  } catch (err) {
+    next(err);
   }
-
-  const review = await Review.findOne({ repoId: repo._id, prNumber: Number(number) }).sort({ createdAt: -1 });
-  if (!review) return res.status(404).json({ message: "no review found for this PR" });
-
-  const errorCount = review.findings.filter(f => f.severity === 'error').length;
-  const warningCount = review.findings.filter(f => f.severity === 'warning').length;
-  const infoCount = review.findings.filter(f => f.severity === 'info').length;
-
-  const reviewObj = review.toObject();
-  reviewObj.severityBreakdown = {
-    error: errorCount,
-    warning: warningCount,
-    info: infoCount,
-  };
-
-  res.json(reviewObj);
 }
 
-export const getUserRepos = async (req, res) => {
+export const getUserRepos = async (req, res, next) => {
   try {
     const userInstallations = await Installation.find({ userId: req.user._id });
     const validInstallationIds = userInstallations.map(i => i.installationId);
@@ -167,12 +176,11 @@ export const getUserRepos = async (req, res) => {
 
     res.json(allUserRepos);
   } catch (error) {
-    console.error("Error fetching repos:", error);
-    res.status(500).json({ message: "Failed to fetch repos" });
+    next(error);
   }
 };
 
-export const toggleFindingResolve = async (req, res) => {
+export const toggleFindingResolve = async (req, res, next) => {
   try {
     const { owner, repo: repoName, number, findingId } = req.params;
     const { resolved } = req.body;
@@ -197,12 +205,11 @@ export const toggleFindingResolve = async (req, res) => {
 
     res.json({ message: "Finding updated", finding });
   } catch (error) {
-    console.error("Error toggling resolve:", error);
-    res.status(500).json({ message: "Internal server error" });
+    next(error);
   }
 };
 
-export const reRunReview = async (req, res) => {
+export const reRunReview = async (req, res, next) => {
   try {
     const { owner, repo: repoName, number } = req.params;
     const repo = await Repo.findOne({ owner, name: repoName });
@@ -229,12 +236,11 @@ export const reRunReview = async (req, res) => {
 
     res.json({ message: "Review job re-queued" });
   } catch (error) {
-    console.error("Error re-running review:", error);
-    res.status(500).json({ message: "Internal server error" });
+    next(error);
   }
 };
 
-export const getIndexingStatus = async (req, res) => {
+export const getIndexingStatus = async (req, res, next) => {
   try {
     const userInstallations = await Installation.find({ userId: req.user._id });
     const validInstallationIds = userInstallations.map(i => i.installationId);
@@ -243,12 +249,11 @@ export const getIndexingStatus = async (req, res) => {
     const indexed = await Repo.countDocuments({ installationId: { $in: validInstallationIds }, lastIndexedSha: { $ne: null } });
     res.json({ total, indexed, progress: total > 0 ? Math.round((indexed / total) * 100) : 0 });
   } catch (error) {
-    console.error("Error fetching indexing status:", error);
-    res.status(500).json({ message: "Internal server error" });
+    next(error);
   }
 };
 
-export const handleAiReviewWebhook = async (req, res) => {
+export const handleAiReviewWebhook = async (req, res, next) => {
   try {
     const expectedSecret = process.env.AI_CALLBACK_SECRET || "default_secret_for_dev";
     const authHeader = req.headers.authorization;
@@ -301,7 +306,6 @@ export const handleAiReviewWebhook = async (req, res) => {
 
     res.status(200).json({ message: "Webhook processed successfully" });
   } catch (error) {
-    console.error("Error processing AI webhook:", error);
-    res.status(500).json({ message: "Internal server error" });
+    next(error);
   }
 };

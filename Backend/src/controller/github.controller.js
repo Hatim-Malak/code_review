@@ -17,15 +17,16 @@ const verifySignature = (req) => {
   return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
 };
 
-export const handleWbhook = async (req, res) => {
-  if (!verifySignature(req)) { 
-    return res.status(401).json({ message: "invalid signature" });
-  }
+export const handleWbhook = async (req, res, next) => {
+  try {
+    if (!verifySignature(req)) { 
+      return res.status(401).json({ message: "invalid signature" });
+    }
 
-  const event = req.headers["x-github-event"];
-  const payload = JSON.parse(req.body.toString("utf8"));
+    const event = req.headers["x-github-event"];
+    const payload = JSON.parse(req.body.toString("utf8"));
 
-  res.status(202).json({ recieved: true });
+    res.status(202).json({ recieved: true });
 
   switch (event) {
     case "installation":
@@ -91,11 +92,14 @@ export const handleWbhook = async (req, res) => {
       break;
     }
   }
-  
+    
   req.app.locals.io.emit("dashboardUpdate", { type: "github_webhook", event });
+} catch (error) {
+  next(error);
+}
 };
 
-export const linkInstallation = async (req, res) => {
+export const linkInstallation = async (req, res, next) => {
   try {
     const { installation_id, state } = req.body;
     
@@ -126,7 +130,6 @@ export const linkInstallation = async (req, res) => {
 
     res.json({ message: "Installation successfully linked to your account." });
   } catch (error) {
-    console.error("Error linking installation:", error);
-    res.status(500).json({ message: "Internal server error" });
+    next(error);
   }
 };
