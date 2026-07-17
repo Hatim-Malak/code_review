@@ -479,7 +479,7 @@ class ReviewRequest(BaseModel):
     namespace: str
     repo_full_name: str
     files: list[DiffFile]
-    model_name: str = "llama-3.1-8b-instant"
+    model_name: str = "llama-3.3-70b-versatile"
 
 
 class ReviewFinding(BaseModel):
@@ -596,16 +596,6 @@ def get_review_llm(model_name: str):
         review_llm_cache[model_name] = ChatGroq(model=model_name, temperature=0)
     return review_llm_cache[model_name]
 
-IMPORT_RE = re.compile(r"^[+-]\s*(import|from)\s")
-COMMENT_OR_BLANK_RE = re.compile(r"^[+-]\s*(#.*)?$")
-
-def _is_trivial_hunk(hunk_text: str) -> bool:
-    changed = [l for l in hunk_text.splitlines() if l.startswith(("+", "-")) and not l.startswith(("+++", "---"))]
-    if not changed:
-        return True
-    meaningful = [l for l in changed if not COMMENT_OR_BLANK_RE.match(l) and not IMPORT_RE.match(l)]
-    return len(meaningful) == 0
-
 def _review_rag_search(query: str, repo_namespace: str) -> list[dict]:
     """Single embedding call instead of multi-query expansion — a diff hunk
     is already specific text, unlike a short ambiguous chat question, so
@@ -642,7 +632,8 @@ def _review_hunk(model_name: str, filename: str, hunk_text: str, context_chunks:
             "You are a precise, conservative code reviewer. You are given one hunk (a contiguous block "
             "of changes) from a pull request diff, plus retrieved context from the project's own codebase "
             "and general best-practice knowledge. Flag an issue ONLY if it is specific and grounded in the "
-            f"diff or the given context — never invent a problem to have something to say. {GROUNDING_RULE}\n"
+            "diff or the given context — never invent a problem to have something to say. "
+            "Never invent facts, APIs, function or class names that are not present in the code. "
             "If you are not confident the issue is real, or you are just hedging your bets, set has_issue to False.\n"
             "CRITICAL: You must output your final review as a valid JSON object matching the schema below. "
             f"\n{review_parser.get_format_instructions()}"
@@ -684,8 +675,6 @@ def review_pr(data: ReviewRequest):
         for hunk in _split_patch_into_hunks(file.patch):
             if hunks_processed >= MAX_HUNKS_PER_REVIEW:
                 break
-            if _is_trivial_hunk(hunk["text"]):
-                continue
             hunks_processed += 1
 
             query = f"Review this change in {file.filename}:\n{hunk['text']}"

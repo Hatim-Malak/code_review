@@ -65,7 +65,7 @@ new Worker(
                 namespace: repo.namespace,
                 repo_full_name: `${repo.owner}/${repo.name}`,
                 files: diffFiles,
-                model_name: "llama-3.1-8b-instant"
+                model_name: "llama-3.3-70b-versatile"
             });
             data = response.data;
         } catch (error) {
