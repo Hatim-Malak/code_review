@@ -223,7 +223,7 @@ def _rerank(query: str, candidates: list[dict], top_n: int = 3) -> list[dict]:
     if not candidates:
         return []
     
-    api_url = "https://api-inference.huggingface.co/models/cross-encoder/ms-marco-MiniLM-L-6-v2"
+    api_url = "https://router.huggingface.co/hf-inference/models/cross-encoder/ms-marco-MiniLM-L-6-v2"
     headers = {"Authorization": f"Bearer {os.getenv('HF_TOKEN')}"}
     
     try:
