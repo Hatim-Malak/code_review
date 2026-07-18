@@ -222,34 +222,21 @@ def _rag_candidates(query: str, source_filter: str = None, namespace: str = None
 def _rerank(query: str, candidates: list[dict], top_n: int = 3) -> list[dict]:
     if not candidates:
         return []
-    
-    api_url = "https://router.huggingface.co/hf-inference/models/cross-encoder/ms-marco-MiniLM-L-6-v2"
-    headers = {"Authorization": f"Bearer {os.getenv('HF_TOKEN')}"}
-    
     try:
-        payload = {
-            "inputs": {
-                "source_sentence": query,
-                "sentences": [item["text"] for item in candidates]
-            }
-        }
-        # 15s timeout to allow for potential cold starts
-        response = httpx.post(api_url, headers=headers, json=payload, timeout=15.0)
-        
-        if response.status_code == 200:
-            scores = response.json()
-            for idx, score in enumerate(scores):
-                candidates[idx]["rerank_score"] = float(score)
-        else:
-            logger.warning(f"[rerank_warning] HF API returned {response.status_code}: {response.text}")
-            for idx in range(len(candidates)):
-                candidates[idx]["rerank_score"] = 0.0
-                
+        results = pc.inference.rerank(
+            model="bge-reranker-v2-m3",
+            query=query,
+            documents=[item["text"] for item in candidates],
+            top_n=len(candidates),  # score everything, we trim to top_n ourselves below
+            return_documents=False,
+        )
+        for r in results.data:
+            candidates[r.index]["rerank_score"] = r.score
     except Exception as e:
-        logger.error(f"[rerank_error] Failed to call HF Inference API: {e}")
+        logger.error(f"[rerank_error] Pinecone rerank failed: {e}")
         for idx in range(len(candidates)):
             candidates[idx]["rerank_score"] = 0.0
-            
+
     candidates.sort(key=lambda x: x.get("rerank_score", 0.0), reverse=True)
     return candidates[:top_n]
 
