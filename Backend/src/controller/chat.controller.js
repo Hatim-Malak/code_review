@@ -32,7 +32,7 @@ export const addChat = async (req, res, next) => {
             (msg) => `User: ${msg.user_message}\nAI: ${msg.AI_message}`
         );
 
-        const response = await axios.post("http://localhost:8000/query", {
+        const response = await axios.post(`${process.env.AI_SERVICES_URL}/query`, {
             query,
             model_name,
             context,
