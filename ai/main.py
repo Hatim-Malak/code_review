@@ -1,4 +1,5 @@
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
+from logger import logger
 import httpx
 from fastapi.middleware.cors import CORSMiddleware
 import os
@@ -24,11 +25,21 @@ load_dotenv()
 
 app = FastAPI()
 
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start_time = time.time()
+    response = await call_next(request)
+    process_time = (time.time() - start_time) * 1000
+    formatted_process_time = "{0:.2f}".format(process_time)
+    logger.info(f"{request.method} {request.url.path} {response.status_code} - {formatted_process_time}ms")
+    return response
+
+
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 INDEX_NAME = "kb-index"
 pc = Pinecone(api_key=PINECONE_API_KEY)
 
-print("[rag_init] Cross-Encoder reranking will use Hugging Face API.")
+logger.info("[rag_init] Cross-Encoder reranking will use Hugging Face API.")
 
 if INDEX_NAME not in pc.list_indexes().names():
     pc.create_index(
@@ -64,7 +75,7 @@ def _embed_with_retry(func, *args, retries=5, backoff=2, **kwargs):
         except Exception as e:
             if attempt == retries - 1:
                 raise e
-            print(f"Embedding failed (Rate limit?), sleeping {backoff}s... (Attempt {attempt+1}/{retries})")
+            logger.info(f"Embedding failed (Rate limit?), sleeping {backoff}s... (Attempt {attempt+1}/{retries})")
             time.sleep(backoff)
             backoff *= 2
 
@@ -132,8 +143,8 @@ def _safe_structured_invoke(llm, messages, fallback, node_name: str = "llm_call"
         try:
             return llm.invoke(messages)
         except Exception as e:
-            print(f"[{node_name}_warning] structured output attempt {attempt + 1}/{retries} failed: {e}")
-    print(f"[{node_name}_warning] all {retries} attempts failed, using fallback")
+            logger.warning(f"[{node_name}_warning] structured output attempt {attempt + 1}/{retries} failed: {e}")
+    logger.warning(f"[{node_name}_warning] all {retries} attempts failed, using fallback")
     return fallback
 
 multiquery_llm = ChatGroq(model="llama-3.1-8b-instant", temperature=0.3).with_structured_output(MultiQueries, method="json_mode")
@@ -168,7 +179,7 @@ def web_search_tool(query: str) -> str:
             return "\n\n".join(formatted_results) if formatted_results else "No result found"
         return str(result)
     except Exception as e:
-        print(f"error in web_search_tool {e}")
+        logger.error(f"error in web_search_tool {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -230,12 +241,12 @@ def _rerank(query: str, candidates: list[dict], top_n: int = 3) -> list[dict]:
             for idx, score in enumerate(scores):
                 candidates[idx]["rerank_score"] = float(score)
         else:
-            print(f"[rerank_warning] HF API returned {response.status_code}: {response.text}")
+            logger.warning(f"[rerank_warning] HF API returned {response.status_code}: {response.text}")
             for idx in range(len(candidates)):
                 candidates[idx]["rerank_score"] = 0.0
                 
     except Exception as e:
-        print(f"[rerank_error] Failed to call HF Inference API: {e}")
+        logger.error(f"[rerank_error] Failed to call HF Inference API: {e}")
         for idx in range(len(candidates)):
             candidates[idx]["rerank_score"] = 0.0
             
@@ -264,7 +275,7 @@ def rag_search_tool(query: str, source_filter: str = None, namespace: str = None
             for chunk in elite_chunks
         ]
     except Exception as e:
-        print(f"error in rag_search_tool {e}")
+        logger.error(f"error in rag_search_tool {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -398,7 +409,7 @@ def build_agent_graph(model_name: str):
             summary = summarize_chain.invoke({"conversation": ctx})
             return {"conversational_summary": summary}
         except Exception as e:
-            print(f"[summarize_warning] {e}")
+            logger.warning(f"[summarize_warning] {e}")
             return {"conversational_summary": ""}
 
     def answer_node(state: AgentState) -> AgentState:
@@ -456,7 +467,7 @@ agent_cache = {}
 
 def get_cached_agent(model_name: str):
     if model_name not in agent_cache:
-        print(f"Compiling graph for model: {model_name}...")
+        logger.info(f"Compiling graph for model: {model_name}...")
         agent_cache[model_name] = build_agent_graph(model_name)
     return agent_cache[model_name]
 
@@ -596,7 +607,7 @@ def index_repo(data: IndexRequest):
         count = ingest_repo_files(data.repo_full_name, data.namespace, files, index, embed_fn)
         return {"indexed": count}
     except Exception as e:
-        print(f"error in /index {e}")
+        logger.error(f"error in /index {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -611,7 +622,7 @@ def reindex_repo(data: ReindexRequest):
         )
         return {"reindexed": count, "removed": len(data.removed_paths)}
     except Exception as e:
-        print(f"error in /reindex {e}")
+        logger.error(f"error in /reindex {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
     
 review_llm_cache: dict[str, Any] = {}
@@ -680,7 +691,7 @@ def _review_hunk(model_name: str, filename: str, hunk_text: str, context_chunks:
             # If we are close to the limit, we sleep
             rate_limit_remaining = response.response_metadata.get("rate_limit", {}).get("remaining_requests")
             if rate_limit_remaining is not None and int(rate_limit_remaining) < 10:
-                print(f"[rate_limit] Nearing Groq limit ({rate_limit_remaining} left). Sleeping 5s.")
+                logger.info(f"[rate_limit] Nearing Groq limit ({rate_limit_remaining} left). Sleeping 5s.")
                 time.sleep(5)
                 
             return HunkReview(**parsed)
@@ -688,12 +699,12 @@ def _review_hunk(model_name: str, filename: str, hunk_text: str, context_chunks:
             err_str = str(e).lower()
             if "429" in err_str or "rate limit" in err_str:
                 sleep_time = 10 * (attempt + 1)
-                print(f"[hunk_review_error] Rate limit exceeded. Sleeping {sleep_time}s and retrying...")
+                logger.error(f"[hunk_review_error] Rate limit exceeded. Sleeping {sleep_time}s and retrying...")
                 time.sleep(sleep_time)
                 continue
-            print(f"[hunk_review_warning] manual parse attempt {attempt + 1}/{retries} failed: {e}")
+            logger.warning(f"[hunk_review_warning] manual parse attempt {attempt + 1}/{retries} failed: {e}")
             
-    print(f"[hunk_review_warning] all {retries} attempts failed, using fallback")
+    logger.warning(f"[hunk_review_warning] all {retries} attempts failed, using fallback")
     return fallback
 
 
@@ -740,7 +751,7 @@ def _process_review_background(data: ReviewRequest):
             timeout=30,
         )
     except Exception as e:
-        print(f"[review_callback_error] failed to deliver result to {data.callback_url}: {e}")
+        logger.error(f"[review_callback_error] failed to deliver result to {data.callback_url}: {e}")
 
 @app.post("/review")
 def review_pr(data: ReviewRequest, background_tasks: BackgroundTasks):

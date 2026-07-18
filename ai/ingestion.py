@@ -1,4 +1,5 @@
 import os
+from logger import logger
 import time
 import hashlib
 from tqdm import tqdm
@@ -43,12 +44,12 @@ def _get_embed_model() -> HuggingFaceEndpointEmbeddings:
     if _embed_model is None:
         if not HF_TOKEN:
             raise ValueError("HF_TOKEN not set in .env")
-        print(f"[chunk_embed] Connecting to HuggingFace Inference API ({EMBEDDING_MODEL})...")
+        logger.info(f"[chunk_embed] Connecting to HuggingFace Inference API ({EMBEDDING_MODEL})...")
         _embed_model = HuggingFaceEndpointEmbeddings(
             model=EMBEDDING_MODEL,
             huggingfacehub_api_token=HF_TOKEN,
         )
-        print(f"[chunk_embed] HF client ready.")
+        logger.info(f"[chunk_embed] HF client ready.")
     return _embed_model
 
 def _get_pinecone_index():
@@ -61,7 +62,7 @@ def _get_pinecone_index():
 
         existing = [idx.name for idx in pc.list_indexes()]
         if PINECONE_INDEX not in existing:
-            print(f"[chunk_embed] Creating Pinecone index '{PINECONE_INDEX}'...")
+            logger.info(f"[chunk_embed] Creating Pinecone index '{PINECONE_INDEX}'...")
             pc.create_index(
                 name      = PINECONE_INDEX,
                 dimension = EMBED_DIM,
@@ -72,11 +73,11 @@ def _get_pinecone_index():
                 ),
             )
             while not pc.describe_index(PINECONE_INDEX).status["ready"]:
-                print("[chunk_embed] Waiting for index to be ready...")
+                logger.info("[chunk_embed] Waiting for index to be ready...")
                 time.sleep(2)
-            print(f"[chunk_embed] Index '{PINECONE_INDEX}' created.")
+            logger.info(f"[chunk_embed] Index '{PINECONE_INDEX}' created.")
         else:
-            print(f"[chunk_embed] Using existing index '{PINECONE_INDEX}'.")
+            logger.info(f"[chunk_embed] Using existing index '{PINECONE_INDEX}'.")
 
         _pinecone_index = pc.Index(PINECONE_INDEX)
     return _pinecone_index
@@ -91,7 +92,7 @@ def _embed_texts_with_retry(model: HuggingFaceEndpointEmbeddings, texts: list[st
     return model.embed_documents(texts)
 
 def _load_datasets() -> list[Chunk]:
-   # print("Loading iamtarun/python_code_instructions_18k_alpaca...")
+   # logger.info("Loading iamtarun/python_code_instructions_18k_alpaca...")
    # alpaca_ds = load_dataset("iamtarun/python_code_instructions_18k_alpaca", split="train")
    chunks = []
    # for idx, row in enumerate(alpaca_ds):
@@ -109,7 +110,7 @@ def _load_datasets() -> list[Chunk]:
    #       source="iamtarun_18k"
    #    ))
    
-   # print("Loading flytech/python-codes-25k...")
+   # logger.info("Loading flytech/python-codes-25k...")
    # flytech_ds = load_dataset("flytech/python-codes-25k", split="train")
    
    # for idx, row in enumerate(flytech_ds):
@@ -126,7 +127,7 @@ def _load_datasets() -> list[Chunk]:
    #          source = "flytech_25k"
    #    ))
 
-   # print("Loading Qwen-59k-Python-Instruct (Web Frameworks)...")
+   # logger.info("Loading Qwen-59k-Python-Instruct (Web Frameworks)...")
    # web_ds = load_dataset("karti06k/Qwen-59k-Python-Instruct", split="train")
    
    # web_subset = web_ds.select(range(min(MAX_WEB_RECORDS, len(web_ds))))
@@ -146,7 +147,7 @@ def _load_datasets() -> list[Chunk]:
    #       source = "qwen_web_frameworks"
    #    ))
    
-   # print("Loading ds-coder-instruct-v1 (Data Science)...")
+   # logger.info("Loading ds-coder-instruct-v1 (Data Science)...")
    # ds_dataset = load_dataset("ed001/ds-coder-instruct-v1", split="train")
     
    # # Slice to respect free tier
@@ -166,7 +167,7 @@ def _load_datasets() -> list[Chunk]:
    #       source = "ds_coder_pandas"
    #    ))
    
-   print("Loading ammarnasr/Python-Security-Code-Dataset (Cybersecurity)...")
+   logger.info("Loading ammarnasr/Python-Security-Code-Dataset (Cybersecurity)...")
    sec_dataset = load_dataset("ammarnasr/Python-Security-Code-Dataset", split="train")
         
    MAX_SEC_RECORDS = 5000
@@ -193,7 +194,7 @@ def _load_datasets() -> list[Chunk]:
             source = "ammarnasr_security"
       ))
 
-   print(f"Total advanced framework instructions ready: {len(chunks)}")
+   logger.info(f"Total advanced framework instructions ready: {len(chunks)}")
    return chunks
 
 def _embed_chunks(chunks:list[Chunk],batch_size:int = 100) -> list[tuple[Chunk,list[float]]]:
@@ -205,7 +206,7 @@ def _embed_chunks(chunks:list[Chunk],batch_size:int = 100) -> list[tuple[Chunk,l
       results = []
       total_batches = (len(chunks) // batch_size) + 1
       
-      print(f"[chunk_embed] Embedding {len(chunks)} chunks via HuggingFace API ({EMBEDDING_MODEL})...")
+      logger.info(f"[chunk_embed] Embedding {len(chunks)} chunks via HuggingFace API ({EMBEDDING_MODEL})...")
 
       for i in tqdm(range(0, len(chunks), batch_size), desc="Embedding Data", colour="green", unit="batch"):
          batch = chunks[i:i + batch_size]
@@ -215,10 +216,10 @@ def _embed_chunks(chunks:list[Chunk],batch_size:int = 100) -> list[tuple[Chunk,l
          
          time.sleep(0.2) 
 
-      print(f"[chunk_embed] Successfully got {len(results)} embeddings.")
+      logger.info(f"[chunk_embed] Successfully got {len(results)} embeddings.")
       return results
    except Exception as e:
-      print(f"There is an error in embedded chunks {e}")
+      logger.error(f"There is an error in embedded chunks {e}")
       raise e
 
 def _upsert_to_pinecone(chunk_embeddings:list[tuple[Chunk,list[float]]]) -> int:
@@ -353,7 +354,7 @@ def ingest_repo_files(repo_full_name: str, namespace: str, files: list[dict], in
             namespace=namespace,
         )
         total += len(batch)
-        print(f"Indexed {len(batch)} chunks, sleeping 2s to avoid rate limits...")
+        logger.info(f"Indexed {len(batch)} chunks, sleeping 2s to avoid rate limits...")
         time.sleep(2)
     return total
 
