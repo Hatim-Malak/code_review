@@ -20,7 +20,7 @@ const env = process.env.NODE_ENV || "development";
 const isProduction = env === "production";
 
 const level = () => {
-  return isProduction ? "warn" : "debug";
+  return isProduction ? "http" : "debug";
 };
 
 // Define colors for each level
