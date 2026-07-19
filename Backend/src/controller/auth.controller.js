@@ -31,8 +31,7 @@ export const signup = async (req,res) =>{
             res.status(201).json({
                 _id:newUser._id,
                 fullName:newUser.fullName,
-                email:newUser.email,
-                password:newUser.password
+                email:newUser.email
             })
         }else{
             res.status(400).json({message:"Invalid user data"})
@@ -58,8 +57,7 @@ export const login = async (req,res) =>{
         res.status(200).json({
             _id:user._id,
             email:user.email,
-            fullName:user.fullName,
-            password:user.password
+            fullName:user.fullName
         })
     } catch (error) {
         console.log("Error in login controller",error.message)
@@ -85,3 +83,56 @@ export const check = async (req,res) =>{
         res.status(500).json({message:"Internal server error"})
     }
 }
+
+export const changePassword = async (req, res, next) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ message: "Both current and new password are required" });
+    }
+    if (newPassword.length < 6) {
+      return res.status(400).json({ message: "Password must be greater than 6 characters" });
+    }
+    const user = await User.findById(req.user._id);
+    const isMatch = await bcrypt.compare(currentPassword, user.password);
+    if (!isMatch) return res.status(400).json({ message: "Current password is incorrect" });
+
+    const salt = await bcrypt.genSalt(10);
+    user.password = await bcrypt.hash(newPassword, salt);
+    await user.save();
+    res.status(200).json({ message: "Password updated successfully" });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const deleteAccount = async (req, res, next) => {
+  const session = await mongoose.startSession();
+  try {
+    const { password } = req.body;
+    if (!password) return res.status(400).json({ message: "Password confirmation required" });
+
+    const user = await User.findById(req.user._id);
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) return res.status(400).json({ message: "Incorrect password" });
+
+    session.startTransaction();
+    await Installation.updateMany({ userId: req.user._id }, { $set: { userId: null } }, { session });
+    await Repo.updateMany(
+      { claimedByUserId: req.user._id },
+      { $set: { claimedByUserId: null, claimedAt: null } },
+      { session }
+    );
+    await Chat.deleteMany({ userId: req.user._id }, { session });
+    await User.findByIdAndDelete(req.user._id, { session });
+    await session.commitTransaction();
+
+    res.cookie("jwt", "", { maxAge: 0 }); // matches your existing logout() pattern exactly
+    res.status(200).json({ message: "Account deleted" });
+  } catch (error) {
+    await session.abortTransaction();
+    next(error);
+  } finally {
+    session.endSession();
+  }
+};

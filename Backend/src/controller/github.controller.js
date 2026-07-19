@@ -2,6 +2,7 @@ import crypto from "crypto";
 import Installation from "../models/installation.model.js";
 import Repo from "../models/repo.model.js";
 import { reviewQueue, indexQueue } from "../lib/queue.js";
+import User from "../models/user.model.js";
 
 const verifySignature = (req) => {
   const signature = req.headers["x-hub-signature-256"];
@@ -17,9 +18,22 @@ const verifySignature = (req) => {
   return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
 };
 
+const isTriggerActive = async (repo, trigger) => {
+  if (repo.reviewPreferences?.activeTriggers) {
+    return repo.reviewPreferences.activeTriggers.includes(trigger);
+  }
+  if (repo.claimedByUserId) {
+    const owner = await User.findById(repo.claimedByUserId).select("preferences");
+    if (owner?.preferences?.review?.activeTriggers) {
+      return owner.preferences.review.activeTriggers.includes(trigger);
+    }
+  }
+  return true; // no preference set anywhere → default active
+};
+
 export const handleWbhook = async (req, res, next) => {
   try {
-    if (!verifySignature(req)) { 
+    if (!verifySignature(req)) {
       return res.status(401).json({ message: "invalid signature" });
     }
 
@@ -28,95 +42,96 @@ export const handleWbhook = async (req, res, next) => {
 
     res.status(202).json({ recieved: true });
 
-  switch (event) {
-    case "installation": {
-      const { installation, action } = payload;
+    switch (event) {
+      case "installation": {
+        const { installation, action } = payload;
 
-      if (action === "deleted") {
-        await Repo.deleteMany({ installationId: installation.id });
-        await Installation.findOneAndDelete({ installationId: installation.id });
-        break;
-      }
+        if (action === "deleted") {
+          await Repo.deleteMany({ installationId: installation.id });
+          await Installation.findOneAndDelete({ installationId: installation.id });
+          break;
+        }
 
-      await Installation.findOneAndUpdate(
-        { installationId: installation.id },
-        { installationId: installation.id, accountLogin: installation.account.login, accountType: installation.account.type },
-        { upsert: true }
-      );
-
-      for (const r of payload.repositories || []) {
-        const [owner, name] = r.full_name.split("/");
-        const repo = await Repo.findOneAndUpdate(
-          { owner, name },
-          { owner, name, installationId: installation.id, namespace: `repo:${installation.id}:${owner}/${name}` },
-          { upsert: true, new: true }
+        await Installation.findOneAndUpdate(
+          { installationId: installation.id },
+          { $set: { installationId: installation.id, accountLogin: installation.account.login, accountType: installation.account.type } },
+          { upsert: true }
         );
-        await indexQueue.add("full-index", { repoId: repo._id.toString() });
-      }
-      break;
-    }
 
-    case "installation_repositories": {
-      const { installation, action } = payload;
-
-      if (action === "removed") {
-        for (const r of payload.repositories_removed || []) {
+        for (const r of payload.repositories || []) {
           const [owner, name] = r.full_name.split("/");
-          await Repo.findOneAndDelete({ owner, name, installationId: installation.id });
+          const repo = await Repo.findOneAndUpdate(
+            { owner, name },
+            { owner, name, installationId: installation.id, namespace: `repo:${installation.id}:${owner}/${name}` },
+            { upsert: true, new: true }
+          );
+          await indexQueue.add("full-index", { repoId: repo._id.toString() });
         }
         break;
       }
 
-      for (const r of payload.repositories_added || []) {
-        const [owner, name] = r.full_name.split("/");
-        const repo = await Repo.findOneAndUpdate(
-          { owner, name },
-          { owner, name, installationId: installation.id, namespace: `repo:${installation.id}:${owner}/${name}` },
-          { upsert: true, new: true }
-        );
-        await indexQueue.add("full-index", { repoId: repo._id.toString() });
-      }
-      break;
-    }
+      case "installation_repositories": {
+        const { installation, action } = payload;
 
-    case "pull_request": {
-      if (!["opened", "synchronize", "reopened"].includes(payload.action))
+        if (action === "removed") {
+          for (const r of payload.repositories_removed || []) {
+            const [owner, name] = r.full_name.split("/");
+            await Repo.findOneAndDelete({ owner, name, installationId: installation.id });
+          }
+          break;
+        }
+
+        for (const r of payload.repositories_added || []) {
+          const [owner, name] = r.full_name.split("/");
+          const repo = await Repo.findOneAndUpdate(
+            { owner, name },
+            { $set: { owner, name, installationId: installation.id, namespace: `repo:${installation.id}:${owner}/${name}` } },
+            { upsert: true, new: true }
+          );
+          await indexQueue.add("full-index", { repoId: repo._id.toString() });
+        }
         break;
-      const { repository, pull_request, installation } = payload;
-      const repo = await Repo.findOne({
-        owner: repository.owner.login,
-        name: repository.name,
-      });
-      if (!repo) break;
-      await reviewQueue.add("review-pr", {
-        repoId: repo._id.toString(),
-        installationId: installation.id,
-        prNumber: pull_request.number,
-        headSha: pull_request.head.sha,
-      });
-      break;
+      }
+
+      case "pull_request": {
+        if (!["opened", "synchronize", "reopened"].includes(payload.action)) break;
+        const { repository, pull_request, installation } = payload;
+        const repo = await Repo.findOne({
+          owner: repository.owner.login,
+          name: repository.name,
+        });
+        if (!repo) break;
+        if (!(await isTriggerActive(repo, "pr"))) break;
+        await reviewQueue.add("review-pr", {
+          repoId: repo._id.toString(),
+          installationId: installation.id,
+          prNumber: pull_request.number,
+          headSha: pull_request.head.sha,
+        });
+        break;
+      }
+
+      case "push": {
+        const { repository, installation, ref } = payload;
+        const repo = await Repo.findOne({
+          owner: repository.owner.login,
+          name: repository.name,
+        });
+        if (!repo || ref !== `refs/heads/${repo.defaultBranch}`) break;
+        if (!(await isTriggerActive(repo, "push"))) break;
+        await indexQueue.add("incremental-index", {
+          repoId: repo._id.toString(),
+          installationId: installation.id,
+          commits: payload.commits,
+        });
+        break;
+      }
     }
 
-    case "push": {
-      const { repository, installation, ref } = payload;
-      const repo = await Repo.findOne({
-        owner: repository.owner.login,
-        name: repository.name,
-      });
-      if (!repo || ref !== `refs/heads/${repo.defaultBranch}`) break;
-      await indexQueue.add("incremental-index", {
-        repoId: repo._id.toString(),
-        installationId: installation.id,
-        commits: payload.commits,
-      });
-      break;
-    }
+    req.app.locals.io.emit("dashboardUpdate", { type: "github_webhook", event });
+  } catch (error) {
+    next(error);
   }
-    
-  req.app.locals.io.emit("dashboardUpdate", { type: "github_webhook", event });
-} catch (error) {
-  next(error);
-}
 };
 
 export const linkInstallation = async (req, res, next) => {
@@ -133,15 +148,14 @@ export const linkInstallation = async (req, res, next) => {
 
     let installation = await Installation.findOneAndUpdate(
       { installationId: Number(installation_id) },
-      { userId: req.user._id }, 
+      { $set: { userId: req.user._id } },
       { new: true }
     );
-
     if (!installation) {
       installation = await Installation.create({
         installationId: Number(installation_id),
         accountLogin: "Pending Sync",
-        addedByUserId: req.user._id,
+        userId: req.user._id,
       });
     }
 

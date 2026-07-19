@@ -7,9 +7,23 @@ import { reviewQueue } from "../lib/queue.js";
 import Activity from "../models/activity.model.js";
 import { postCheckRun } from "../lib/githubChecks.js";
 import logger from "../lib/logger.js";
-import {uninstallApp} from "../lib/githubAuth.js"
+import { uninstallApp } from "../lib/githubAuth.js"
+import User from "../models/user.model.js";
 
-const isCollaborator = async(githubLogin, repo) => {
+
+const SEVERITY_RANK = { info: 0, warning: 1, error: 2 };
+
+const resolveMinSeverity = async (repo) => {
+  if (repo.reviewPreferences?.minSeverity) return repo.reviewPreferences.minSeverity;
+  if (repo.claimedByUserId) {
+    const owner = await User.findById(repo.claimedByUserId).select("preferences");
+    return owner?.preferences?.review?.defaultMinSeverity || "info";
+  }
+  return "info";
+};
+
+
+const isCollaborator = async (githubLogin, repo) => {
   if (!githubLogin) return false;
   try {
     const octokit = octokitForInstallation(repo.installationId);
@@ -18,14 +32,14 @@ const isCollaborator = async(githubLogin, repo) => {
       repo: repo.name,
       username: githubLogin,
     });
-    return true; 
+    return true;
   } catch (err) {
-    if (err.status === 404) return false; 
+    if (err.status === 404) return false;
     throw err;
   }
 }
 
-export const getRepoPRs = async(req, res, next) => {
+export const getRepoPRs = async (req, res, next) => {
   try {
     const { owner, repo: repoName } = req.params;
     const repo = await Repo.findOne({ owner, name: repoName });
@@ -72,7 +86,7 @@ export const getRepoPRs = async(req, res, next) => {
   }
 }
 
-export const getRepoReview = async(req, res, next) => {
+export const getRepoReview = async (req, res, next) => {
   try {
     const { owner, repo: repoName, number } = req.params;
     const repo = await Repo.findOne({ owner, name: repoName });
@@ -108,7 +122,7 @@ export const getUserRepos = async (req, res, next) => {
   try {
     const userInstallations = await Installation.find({ userId: req.user._id });
     const validInstallationIds = userInstallations.map(i => i.installationId);
-    
+
     // First, find all repos the user owns
     const userRepos = await Repo.find({ installationId: { $in: validInstallationIds } });
     const userRepoIds = userRepos.map(r => r._id);
@@ -162,7 +176,7 @@ export const getUserRepos = async (req, res, next) => {
 
     // Merge with userRepos to ensure repos with 0 reviews are still shown
     const reposWithReviewsMap = new Map(reposWithReviews.map(r => [r._id.toString(), r]));
-    
+
     const allUserRepos = userRepos.map(repo => {
       const reviewData = reposWithReviewsMap.get(repo._id.toString());
       return {
@@ -271,20 +285,24 @@ export const handleAiReviewWebhook = async (req, res, next) => {
 
     const repo = await Repo.findById(repoId);
     if (!repo) return res.status(404).json({ message: "Repo not found" });
+    const minSeverity = await resolveMinSeverity(repo);
+    const filteredFindings = findings.filter(
+      f => SEVERITY_RANK[f.severity] >= SEVERITY_RANK[minSeverity]
+    );
 
     const review = await Review.findOne({ repoId: repo._id, prNumber: Number(prNumber) });
     if (!review) return res.status(404).json({ message: "Review not found" });
 
     // Merge findings to preserve resolved state
-    const mergedFindings = findings.map(newF => {
-      const existingF = review.findings.find(oldF => 
-          oldF.file === newF.file &&
-          oldF.startLine === newF.startLine &&
-          oldF.endLine === newF.endLine &&
-          oldF.comment === newF.comment
+    const mergedFindings = filteredFindings.map(newF => {
+      const existingF = review.findings.find(oldF =>
+        oldF.file === newF.file &&
+        oldF.startLine === newF.startLine &&
+        oldF.endLine === newF.endLine &&
+        oldF.comment === newF.comment
       );
       if (existingF) {
-          return { ...newF, _id: existingF._id, resolved: existingF.resolved };
+        return { ...newF, _id: existingF._id, resolved: existingF.resolved };
       }
       return newF;
     });
@@ -294,16 +312,16 @@ export const handleAiReviewWebhook = async (req, res, next) => {
     await review.save();
 
     await Activity.create({
-      type: findings.length === 0 ? "pr_merged_clean" : "review_completed",
+      type: filteredFindings.length === 0 ? "pr_merged_clean" : "review_completed",
       repoId: repo._id,
       prNumber: Number(prNumber),
-      message: findings.length === 0 
-          ? `PR #${prNumber} passed review with 0 findings` 
-          : `Completed review for PR #${prNumber} with ${findings.length} finding(s)`
+      message: filteredFindings.length === 0
+        ? `PR #${prNumber} passed review with 0 findings`
+        : `Completed review for PR #${prNumber} with ${filteredFindings.length} finding(s)`
     });
 
     const octokit = octokitForInstallation(repo.installationId);
-    await postCheckRun(octokit, repo, headSha, { status: "completed", findings });
+    await postCheckRun(octokit, repo, headSha, { status: "completed", findings: filteredFindings });
 
     res.status(200).json({ message: "Webhook processed successfully" });
   } catch (error) {
@@ -311,20 +329,24 @@ export const handleAiReviewWebhook = async (req, res, next) => {
   }
 };
 
-export async function fullyUninstall(req, res) {
-  const { owner, repo: repoName } = req.params;
-  const repo = await Repo.findOne({ owner, name: repoName });
-  if (!repo) return res.status(404).json({ message: "repo not found" });
+export async function fullyUninstall(req, res, next) {
+  try {
+    const { owner, repo: repoName } = req.params;
+    const repo = await Repo.findOne({ owner, name: repoName });
+    if (!repo) return res.status(404).json({ message: "repo not found" });
 
-  if (String(repo.claimedByUserId) !== String(req.user._id)) {
-    return res.status(403).json({ message: "only the connecting user can uninstall this" });
+    if (String(repo.claimedByUserId) !== String(req.user._id)) {
+      return res.status(403).json({ message: "only the connecting user can uninstall this" });
+    }
+
+    await uninstallApp(repo.installationId);
+
+    repo.claimedByUserId = null;
+    repo.claimedAt = null;
+    await repo.save();
+
+    res.json({ message: "uninstalled" });
+  } catch (error) {
+    next(error);
   }
-
-  await uninstallApp(repo.installationId);
-  
-  repo.claimedByUserId = null;
-  repo.claimedAt = null;
-  await repo.save();
-
-  res.json({ message: "uninstalled" });
 }
