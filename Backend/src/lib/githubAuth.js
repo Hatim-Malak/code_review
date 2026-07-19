@@ -38,6 +38,18 @@ export const appJwt = () => {
     )
 }
 
+export async function uninstallApp(installationId) {
+  const response = await fetch(`https://api.github.com/app/installations/${installationId}`, {
+    method: "DELETE",
+    headers: {
+      Authorization: `Bearer ${appJwt()}`,
+      Accept: "application/vnd.github+json",
+    },
+  });
+  if (response.status !== 204) {
+    throw new Error(`Failed to uninstall GitHub App: ${response.status}`);
+  }
+}
 
 export const octokitForInstallation = (installationId) => {
     return new Octokit({

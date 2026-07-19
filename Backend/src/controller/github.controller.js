@@ -29,30 +29,50 @@ export const handleWbhook = async (req, res, next) => {
     res.status(202).json({ recieved: true });
 
   switch (event) {
-    case "installation":
-    case "installation_repositories": {
-      const { installation } = payload;
+    case "installation": {
+      const { installation, action } = payload;
+
+      if (action === "deleted") {
+        await Repo.deleteMany({ installationId: installation.id });
+        await Installation.findOneAndDelete({ installationId: installation.id });
+        break;
+      }
+
       await Installation.findOneAndUpdate(
         { installationId: installation.id },
-        {
-          installationId: installation.id,
-          accountLogin: installation.account.login,
-          accountType: installation.account.type,
-        },
-        { upsert: true },
+        { installationId: installation.id, accountLogin: installation.account.login, accountType: installation.account.type },
+        { upsert: true }
       );
-      const repos = payload.repositories || payload.repositories_added || [];
-      for (const r of repos) {
+
+      for (const r of payload.repositories || []) {
         const [owner, name] = r.full_name.split("/");
         const repo = await Repo.findOneAndUpdate(
           { owner, name },
-          {
-            owner,
-            name,
-            installationId: installation.id,
-            namespace: `repo:${installation.id}:${owner}/${name}`,
-          },
-          { upsert: true, new: true },
+          { owner, name, installationId: installation.id, namespace: `repo:${installation.id}:${owner}/${name}` },
+          { upsert: true, new: true }
+        );
+        await indexQueue.add("full-index", { repoId: repo._id.toString() });
+      }
+      break;
+    }
+
+    case "installation_repositories": {
+      const { installation, action } = payload;
+
+      if (action === "removed") {
+        for (const r of payload.repositories_removed || []) {
+          const [owner, name] = r.full_name.split("/");
+          await Repo.findOneAndDelete({ owner, name, installationId: installation.id });
+        }
+        break;
+      }
+
+      for (const r of payload.repositories_added || []) {
+        const [owner, name] = r.full_name.split("/");
+        const repo = await Repo.findOneAndUpdate(
+          { owner, name },
+          { owner, name, installationId: installation.id, namespace: `repo:${installation.id}:${owner}/${name}` },
+          { upsert: true, new: true }
         );
         await indexQueue.add("full-index", { repoId: repo._id.toString() });
       }
@@ -102,33 +122,49 @@ export const handleWbhook = async (req, res, next) => {
 export const linkInstallation = async (req, res, next) => {
   try {
     const { installation_id, state } = req.body;
-    
+
     if (!installation_id || !state) {
       return res.status(400).json({ message: "installation_id and state are required" });
     }
 
-    // `state` should match the logged-in user's ID
     if (state !== req.user._id.toString()) {
       return res.status(403).json({ message: "state mismatch, unauthorized linking" });
     }
 
-    const installation = await Installation.findOneAndUpdate(
+    let installation = await Installation.findOneAndUpdate(
       { installationId: Number(installation_id) },
-      { userId: req.user._id },
+      { userId: req.user._id }, 
       { new: true }
     );
 
     if (!installation) {
-      // It's possible the webhook hasn't fired yet, or we got a bad ID.
-      // But typically webhook fires first. Let's create a placeholder if it doesn't exist
-      await Installation.create({
+      installation = await Installation.create({
         installationId: Number(installation_id),
         accountLogin: "Pending Sync",
-        userId: req.user._id
+        addedByUserId: req.user._id,
       });
     }
 
-    res.json({ message: "Installation successfully linked to your account." });
+    const repos = await Repo.find({ installationId: Number(installation_id) });
+    const claimed = [];
+    const blocked = [];
+
+    for (const repo of repos) {
+      if (!repo.claimedByUserId) {
+        repo.claimedByUserId = req.user._id;
+        repo.claimedAt = new Date();
+        await repo.save();
+        claimed.push(`${repo.owner}/${repo.name}`);
+      } else if (String(repo.claimedByUserId) !== String(req.user._id)) {
+        blocked.push(`${repo.owner}/${repo.name}`);
+      }
+    }
+
+    return res.json({
+      message: "Installation successfully linked to your account.",
+      claimed,
+      blocked,
+    });
   } catch (error) {
     next(error);
   }

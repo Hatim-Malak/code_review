@@ -7,6 +7,7 @@ import { reviewQueue } from "../lib/queue.js";
 import Activity from "../models/activity.model.js";
 import { postCheckRun } from "../lib/githubChecks.js";
 import logger from "../lib/logger.js";
+import {uninstallApp} from "../lib/githubAuth.js"
 
 const isCollaborator = async(githubLogin, repo) => {
   if (!githubLogin) return false;
@@ -308,4 +309,22 @@ export const handleAiReviewWebhook = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
+};
+
+export async function fullyUninstall(req, res) {
+  const { owner, repo: repoName } = req.params;
+  const repo = await Repo.findOne({ owner, name: repoName });
+  if (!repo) return res.status(404).json({ message: "repo not found" });
+
+  if (String(repo.claimedByUserId) !== String(req.user._id)) {
+    return res.status(403).json({ message: "only the connecting user can uninstall this" });
+  }
+
+  await uninstallApp(repo.installationId);
+  
+  repo.claimedByUserId = null;
+  repo.claimedAt = null;
+  await repo.save();
+
+  res.json({ message: "uninstalled" });
+}

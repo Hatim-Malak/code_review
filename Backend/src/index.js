@@ -85,28 +85,44 @@ queueEventsConnection.on("error", (err) => {
   logger.warn(`QueueEvents Redis connection error: ${err.message}`);
 });
 
-indexQueueEvents.on("progress", ({ jobId, data }) => {
+async function emitToRepoOwner(repoId, event, payload) {
+  if (!repoId) return;
+  const repo = await Repo.findById(repoId);
+  if (repo?.claimedByUserId) {
+    io.to(repo.claimedByUserId.toString()).emit(event, payload);
+  }
+}
+
+indexQueueEvents.on("progress", async ({ jobId, data }) => {
   logger.debug(`[QueueEvents] Progress event: jobId=${jobId}, progress=${data}`);
-  io.emit("indexingProgress", { jobId, progress: data, status: "indexing" });
-});
-indexQueueEvents.on("completed", ({ jobId }) => {
-  logger.info(`[QueueEvents] Completed event: jobId=${jobId}`);
-  io.emit("indexingProgress", { jobId, progress: 100, status: "completed" });
-  io.emit("dashboardUpdate", { type: "index_completed", jobId });
-});
-indexQueueEvents.on("failed", ({ jobId, failedReason }) => {
-  logger.error(`[QueueEvents] Failed event: jobId=${jobId}, reason=${failedReason}`);
-  io.emit("indexingProgress", { jobId, progress: 0, status: "failed", error: failedReason });
-  io.emit("dashboardUpdate", { type: "index_failed", jobId });
+  const job = await indexQueue.getJob(jobId);
+  await emitToRepoOwner(job?.data?.repoId, "indexingProgress", { jobId, progress: data, status: "indexing" });
 });
 
-reviewQueueEvents.on("active", ({ jobId }) => {
-  logger.info(`[QueueEvents] Review started: jobId=${jobId}`);
-  io.emit("dashboardUpdate", { type: "review_started", jobId });
+indexQueueEvents.on("completed", async ({ jobId }) => {
+  logger.info(`[QueueEvents] Completed event: jobId=${jobId}`);
+  const job = await indexQueue.getJob(jobId);
+  await emitToRepoOwner(job?.data?.repoId, "indexingProgress", { jobId, progress: 100, status: "completed" });
+  await emitToRepoOwner(job?.data?.repoId, "dashboardUpdate", { type: "index_completed", jobId });
 });
-reviewQueueEvents.on("completed", ({ jobId }) => {
+
+indexQueueEvents.on("failed", async ({ jobId, failedReason }) => {
+  logger.error(`[QueueEvents] Failed event: jobId=${jobId}, reason=${failedReason}`);
+  const job = await indexQueue.getJob(jobId);
+  await emitToRepoOwner(job?.data?.repoId, "indexingProgress", { jobId, progress: 0, status: "failed", error: failedReason });
+  await emitToRepoOwner(job?.data?.repoId, "dashboardUpdate", { type: "index_failed", jobId });
+});
+
+reviewQueueEvents.on("active", async ({ jobId }) => {
+  logger.info(`[QueueEvents] Review started: jobId=${jobId}`);
+  const job = await reviewQueue.getJob(jobId);
+  await emitToRepoOwner(job?.data?.repoId, "dashboardUpdate", { type: "review_started", jobId });
+});
+
+reviewQueueEvents.on("completed", async ({ jobId }) => {
   logger.info(`[QueueEvents] Review completed: jobId=${jobId}`);
-  io.emit("dashboardUpdate", { type: "review_completed", jobId });
+  const job = await reviewQueue.getJob(jobId);
+  await emitToRepoOwner(job?.data?.repoId, "dashboardUpdate", { type: "review_completed", jobId });
 });
 
 const PORT = process.env.PORT;

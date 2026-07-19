@@ -14,5 +14,7 @@ router.post("/:owner/:repo/pr/:number/rerun", protectRoute, reRunReview);
 
 // Internal AI webhook - secured via AI_CALLBACK_SECRET in the controller
 router.post("/internal/ai-webhook", handleAiReviewWebhook);
+// Backend/src/routes/repo.route.js
+router.delete("/:owner/:repo/uninstall", requireAuth, fullyUninstall);
 
 export default router;

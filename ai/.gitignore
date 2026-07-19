@@ -11,3 +11,4 @@ requirement.txt
 # Virtual environments
 .venv
 python
+logs

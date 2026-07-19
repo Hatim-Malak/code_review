@@ -24,6 +24,15 @@ const repoSchema = new mongoose.Schema(
         lastIndexedSha:{
             type:String,
             default:null
+        },
+        claimedByUserId:{
+            type:mongoose.Schema.Types.ObjectId,
+            ref:"User",
+            default:null
+        },
+        claimedAt:{
+            type:Date,
+            default:null
         }
     },
     {timestamps:true}
