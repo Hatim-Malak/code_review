@@ -1,6 +1,10 @@
 import User from "../models/user.model.js"
 import bcrypt from "bcryptjs"
 import {generateToken} from "../lib/util.js"
+import mongoose from "mongoose";
+import Installation from "../models/installation.model.js";
+import Repo from "../models/repo.model.js";
+import Chat from "../models/chat.model.js";
 
 export const signup = async (req,res) =>{
     const {fullName,email,password} = req.body
@@ -28,11 +32,10 @@ export const signup = async (req,res) =>{
             await generateToken(newUser._id,res)
             await newUser.save()
 
-            res.status(201).json({
-                _id:newUser._id,
-                fullName:newUser.fullName,
-                email:newUser.email
-            })
+            const userObj = newUser.toObject();
+            delete userObj.password;
+
+            res.status(201).json(userObj)
         }else{
             res.status(400).json({message:"Invalid user data"})
         }
@@ -45,6 +48,7 @@ export const signup = async (req,res) =>{
 export const login = async (req,res) =>{
     const {email,fullName,password} = req.body
     try {
+        if (!email || !password) return res.status(400).json({message:"All fields are required"})
         if(password.length<6) return res.status(400).json({message:"The password must be greater than 6 characters"})
         const user = await User.findOne({email})
         if(!user){
@@ -54,11 +58,11 @@ export const login = async (req,res) =>{
         if(!ispassword) return res.status(400).json({message:"Invalid credentials"})
 
         generateToken(user._id,res)
-        res.status(200).json({
-            _id:user._id,
-            email:user.email,
-            fullName:user.fullName
-        })
+        
+        const userObj = user.toObject();
+        delete userObj.password;
+        
+        res.status(200).json(userObj)
     } catch (error) {
         console.log("Error in login controller",error.message)
         res.status(500).json({message:"Internal server error"})

@@ -169,7 +169,8 @@ export const getUserRepos = async (req, res, next) => {
           name: "$repoDetails.name",
           latestReviewDate: 1,
           attentionCount: 1,
-          lastIndexedAt: "$repoDetails.updatedAt"
+          lastIndexedAt: "$repoDetails.updatedAt",
+          reviewPreferences: "$repoDetails.reviewPreferences"
         }
       }
     ]);
@@ -339,11 +340,23 @@ export async function fullyUninstall(req, res, next) {
       return res.status(403).json({ message: "only the connecting user can uninstall this" });
     }
 
-    await uninstallApp(repo.installationId);
+    try {
+      await uninstallApp(repo.installationId);
+    } catch (uninstallError) {
+      console.error("Failed to uninstall from GitHub API:", uninstallError);
+    }
 
-    repo.claimedByUserId = null;
-    repo.claimedAt = null;
-    await repo.save();
+    try {
+      await fetch(`${process.env.AI_SERVICES_URL}/delete_namespace`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ namespace: repo.namespace }),
+      });
+    } catch (err) {
+      console.error("Failed to delete namespace in AI service:", err);
+    }
+
+    await repo.deleteOne();
 
     res.json({ message: "uninstalled" });
   } catch (error) {

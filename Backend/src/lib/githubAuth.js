@@ -44,6 +44,8 @@ export async function uninstallApp(installationId) {
     headers: {
       Authorization: `Bearer ${appJwt()}`,
       Accept: "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2022-11-28",
+      "User-Agent": "HatMind-RAG",
     },
   });
   if (response.status !== 204) {

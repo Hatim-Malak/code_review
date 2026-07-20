@@ -6,7 +6,10 @@ export const useAuth = create((set,get)=>({
     authUser:null,
     isSigningUp:false,
     isSigningIn:false,
+    isUpdatingProfile:false,
     isCheckingAuth:true,
+
+    updateAuthUser: (user) => set({ authUser: user }),
 
     checkAuth:async()=>{
         try {

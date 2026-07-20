@@ -55,6 +55,7 @@ const AboutPage = () => {
       ? [
           { label: "Chat", href: "/chat" },
           { label: "Reviews", href: "/reviews" },
+          { label: "Settings", href: "/settings" },
           { label: "Logout", href: "#", onClick: logout },
         ]
       : [

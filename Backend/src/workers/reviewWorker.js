@@ -5,6 +5,7 @@ import {octokitForInstallation} from "../lib/githubAuth.js"
 import Repo from "../models/repo.model.js"
 import Review from "../models/review.model.js"
 import Activity from "../models/activity.model.js"
+import User from "../models/user.model.js"
 import { postCheckRun } from "../lib/githubChecks.js";
 import { redisConnection } from "../lib/redisConnection.js";
 import { connectdb } from "../lib/db.js";
@@ -17,12 +18,22 @@ process.on("uncaughtException", () => {
 connectdb();
 logger.info("Review worker started, waiting for jobs...");
 
+const resolveModel = async (repo) => {
+  if (repo.reviewPreferences?.model) return repo.reviewPreferences.model;
+  if (repo.claimedByUserId) {
+    const owner = await User.findById(repo.claimedByUserId).select("preferences");
+    return owner?.preferences?.review?.defaultModel || "llama-3.3-70b-versatile";
+  }
+  return "llama-3.3-70b-versatile";
+};
+
 new Worker(
     "review-pr",
     async(job)=>{
         logger.info(`Processing review job for PR #${job.data.prNumber}`);
         const {repoId,installationId,prNumber,headSha} = job.data
         const repo = await Repo.findById(repoId)
+        const modelName = await resolveModel(repo);
         
         await Activity.create({
             type: "review_started",
@@ -97,7 +108,7 @@ new Worker(
                 namespace: repo.namespace,
                 repo_full_name: `${repo.owner}/${repo.name}`,
                 files: diffFiles,
-                model_name: "llama-3.3-70b-versatile",
+                model_name: modelName,
                 callback_url: `${backendUrl}/api/repos/internal/ai-webhook?repoId=${repo._id}&prNumber=${prNumber}&headSha=${headSha}`,
                 callback_token: process.env.AI_CALLBACK_SECRET || "default_secret_for_dev"
             }, {

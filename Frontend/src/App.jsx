@@ -7,6 +7,7 @@ import ChatPage from './pages/ChatPage.jsx'
 import AboutPage from './pages/AboutPage.jsx'
 import ReviewsPage from './pages/ReviewsPage.jsx'
 import GithubSetupPage from './pages/GithubSetupPage.jsx'
+import SettingsPage from './pages/SettingsPage.jsx'
 import { Toaster } from 'react-hot-toast'
 import { useAuth } from './store/useAuthStore.js'
 import { Loader } from 'lucide-react'
@@ -35,6 +36,7 @@ const App = () => {
         <Route path='/chat' element={authUser?<ChatPage/>:<Navigate to='/login'/>}/>
         <Route path='/reviews' element={authUser?<ReviewsPage/>:<Navigate to='/login'/>}/>
         <Route path='/setup' element={authUser?<GithubSetupPage/>:<Navigate to='/login'/>}/>
+        <Route path='/settings' element={authUser?<SettingsPage/>:<Navigate to='/login'/>}/>
       </Routes>
       <Toaster/>
     </div>

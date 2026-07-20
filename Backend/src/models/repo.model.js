@@ -33,6 +33,11 @@ const repoSchema = new mongoose.Schema(
         claimedAt:{
             type:Date,
             default:null
+        },
+        reviewPreferences: {
+            minSeverity: { type: String, enum: ["info", "warning", "error"] },
+            activeTriggers: { type: [String], enum: ["pr", "push"] },
+            model: { type: String }
         }
     },
     {timestamps:true}

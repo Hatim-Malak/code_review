@@ -67,7 +67,8 @@ const ChatPage = () => {
     e.preventDefault();
     const msg = e.target.message.value;
     if (!msg.trim()) return;
-    sendMessage(msg);
+    const modelName = authUser?.preferences?.chat?.defaultModel || "llama-3.1-8b-instant";
+    sendMessage(msg, modelName);
     e.target.reset();
     // Reset textarea height
     const textarea = e.target.querySelector('textarea');
@@ -75,7 +76,8 @@ const ChatPage = () => {
   };
 
   const sendSuggestion = (text) => {
-    sendMessage(text);
+    const modelName = authUser?.preferences?.chat?.defaultModel || "llama-3.1-8b-instant";
+    sendMessage(text, modelName);
   };
 
   const navItems = [
@@ -85,6 +87,7 @@ const ChatPage = () => {
       ? [
           { label: "Chat", href: "/chat" },
           { label: "Reviews", href: "/reviews" },
+          { label: "Settings", href: "/settings" },
           { label: "Logout", href: "#", onClick: logout },
         ]
       : [

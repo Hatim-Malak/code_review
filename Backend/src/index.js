@@ -1,5 +1,5 @@
+import "dotenv/config";
 import express from "express";
-import dotenv from "dotenv";
 import cookieParser from "cookie-parser";
 import cors from "cors";
 import authRoutes from "./routes/auth.route.js";
@@ -7,6 +7,7 @@ import chatRoutes from "./routes/chat.route.js";
 import githubRoutes from "./routes/github.route.js";
 import repoRoutes from "./routes/repo.route.js";
 import activityRoutes from "./routes/activity.route.js";
+import settingsRoutes from "./routes/settings.route.js";
 import { connectdb } from "./lib/db.js";
 import { Server } from "socket.io";
 import { createServer } from "http";
@@ -14,18 +15,19 @@ import { QueueEvents } from "bullmq";
 import { redisConnection } from "./lib/redisConnection.js";
 import { requestLogger, errorLogger } from "./middleware/logger.middleware.js";
 import logger from "./lib/logger.js";
+import { indexQueue, reviewQueue } from "./lib/queue.js";
+import Repo from "./models/repo.model.js";
 
 // Supplementary uncaughtException handler.
 // Winston natively catches, formats, and logs exceptions to our transports.
 // Since we have `exitOnError: false` configured, Winston leaves the process alive.
 // This enforces the hard exit 500ms later to give Winston time to flush the log.
 process.on("uncaughtException", () => {
-  setTimeout(() => process.exit(1), 500); 
+  setTimeout(() => process.exit(1), 500);
 });
 
 const app = express();
 app.set("trust proxy", 1);
-dotenv.config();
 const allowedOrigins = [
   "http://localhost:5173", //for development
   "https://starlit-stationary-frontend.vercel.app",
@@ -138,6 +140,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/chat", chatRoutes);
 app.use("/api/repos", repoRoutes);
 app.use("/api/activity", activityRoutes);
+app.use("/api/settings", settingsRoutes);
 
 app.use(errorLogger);
 

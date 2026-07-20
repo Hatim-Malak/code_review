@@ -740,6 +740,21 @@ def _process_review_background(data: ReviewRequest):
     except Exception as e:
         logger.error(f"[review_callback_error] failed to deliver result to {data.callback_url}: {e}")
 
+@app.post("/delete_namespace")
+def delete_namespace(data: dict):
+    try:
+        namespace = data.get("namespace")
+        if not namespace:
+            raise HTTPException(status_code=400, detail="namespace is required")
+        index = pc.Index(INDEX_NAME)
+        index.delete(delete_all=True, namespace=namespace)
+        return {"status": "success", "message": f"Namespace {namespace} deleted."}
+    except Exception as e:
+        if "404" in str(e) or "Namespace not found" in str(e):
+            return {"status": "success", "message": f"Namespace {namespace} did not exist."}
+        logger.error(f"Error deleting namespace: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/review")
 def review_pr(data: ReviewRequest, background_tasks: BackgroundTasks):
     background_tasks.add_task(_process_review_background, data)
