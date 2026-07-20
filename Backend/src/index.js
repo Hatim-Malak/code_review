@@ -8,6 +8,7 @@ import githubRoutes from "./routes/github.route.js";
 import repoRoutes from "./routes/repo.route.js";
 import activityRoutes from "./routes/activity.route.js";
 import settingsRoutes from "./routes/settings.route.js";
+import notificationRoutes from "./routes/notification.route.js";
 import { connectdb } from "./lib/db.js";
 import { Server } from "socket.io";
 import { createServer } from "http";
@@ -141,6 +142,7 @@ app.use("/api/chat", chatRoutes);
 app.use("/api/repos", repoRoutes);
 app.use("/api/activity", activityRoutes);
 app.use("/api/settings", settingsRoutes);
+app.use("/api/notifications", notificationRoutes);
 
 app.use(errorLogger);
 

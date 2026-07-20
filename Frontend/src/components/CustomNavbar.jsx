@@ -1,11 +1,20 @@
 import React, { useState, useEffect } from "react";
-import { Link, useLocation } from "react-router-dom";
-import { Menu, X, PanelLeftOpen } from "lucide-react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Menu, X, PanelLeftOpen, Bell, Check, CheckCheck } from "lucide-react";
+import { useNotificationStore } from "../store/useNotificationStore.js";
+import { useReviewStore } from "../store/useReviewStore.js";
+import { useAuth } from "../store/useAuthStore.js";
 
 const CustomNavbar = ({ items, logo, className = "", onSidebarToggle, dashboardMode = false, indexingStatus }) => {
   const [isScrolled, setIsScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const location = useLocation();
+
+  const navigate = useNavigate();
+  const { authUser } = useAuth();
+  const { socket } = useReviewStore();
+  const { notifications, unreadCount, fetchNotifications, markAsRead, markAllAsRead, subscribeToNotifications, unsubscribeFromNotifications } = useNotificationStore();
+  const [showDropdown, setShowDropdown] = useState(false);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -14,6 +23,30 @@ const CustomNavbar = ({ items, logo, className = "", onSidebarToggle, dashboardM
     window.addEventListener("scroll", handleScroll);
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
+
+  useEffect(() => {
+    if (authUser) {
+      fetchNotifications();
+    }
+  }, [authUser]);
+
+  useEffect(() => {
+    if (socket && authUser) {
+      subscribeToNotifications(socket);
+      return () => unsubscribeFromNotifications(socket);
+    }
+  }, [socket, authUser, subscribeToNotifications, unsubscribeFromNotifications]);
+
+  const handleNotificationClick = (notification) => {
+    if (!notification.isRead) {
+      markAsRead(notification._id);
+    }
+    setShowDropdown(false);
+    if (notification.metadata?.repoId && notification.metadata?.prNumber) {
+      navigate(`/reviews?repoId=${notification.metadata.repoId}&prNumber=${notification.metadata.prNumber}`);
+    }
+  };
+
 
   return (
     <header
@@ -88,7 +121,7 @@ const CustomNavbar = ({ items, logo, className = "", onSidebarToggle, dashboardM
             </div>
           )}
 
-          {/* Desktop Nav */}
+        {/* Desktop Nav */}
           <nav className="hidden md:flex items-center gap-1 bg-cream/50 backdrop-blur-sm border border-greenDark/10 p-1 rounded-full shadow-sm">
           {items.map((item, idx) => {
             const isActive = location.pathname === item.href;
@@ -114,6 +147,64 @@ const CustomNavbar = ({ items, logo, className = "", onSidebarToggle, dashboardM
               </Link>
             );
           })}
+
+          {/* Notification Bell (Desktop) */}
+          {authUser && (
+            <div className="relative flex items-center ml-2 mr-2">
+              <button 
+                onClick={() => setShowDropdown(!showDropdown)}
+                className="relative p-2 text-greenDark hover:bg-greenDark/10 rounded-full transition-colors"
+              >
+                <Bell size={20} />
+                {unreadCount > 0 && (
+                  <span className="absolute top-0 right-0 h-4 w-4 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center border-2 border-cream">
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </span>
+                )}
+              </button>
+
+              {/* Dropdown Menu */}
+              {showDropdown && (
+                <div className="absolute top-full mt-3 right-0 w-80 bg-white border border-greenDark/10 shadow-xl rounded-xl overflow-hidden z-50">
+                  <div className="p-3 border-b border-greenDark/5 flex justify-between items-center bg-cream/30">
+                    <span className="font-bold text-sm text-greenDark">Notifications</span>
+                    {unreadCount > 0 && (
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); markAllAsRead(); }}
+                        className="text-xs text-greenDark/60 hover:text-greenDark flex items-center gap-1 transition-colors"
+                      >
+                        <CheckCheck size={14} /> Mark all read
+                      </button>
+                    )}
+                  </div>
+                  <div className="max-h-80 overflow-y-auto">
+                    {notifications.length === 0 ? (
+                      <div className="p-6 text-center text-sm text-greenDark/50">
+                        No notifications yet.
+                      </div>
+                    ) : (
+                      notifications.map(n => (
+                        <div 
+                          key={n._id}
+                          onClick={() => handleNotificationClick(n)}
+                          className={`p-3 border-b border-greenDark/5 cursor-pointer hover:bg-greenDark/5 transition-colors ${!n.isRead ? 'bg-greenDark/5' : ''}`}
+                        >
+                          <div className="flex justify-between items-start mb-1">
+                            <span className={`text-sm ${!n.isRead ? 'font-bold text-greenDark' : 'font-medium text-greenDark/80'}`}>
+                              {n.title}
+                            </span>
+                            {!n.isRead && <span className="h-2 w-2 bg-greenLight rounded-full mt-1.5 flex-shrink-0"></span>}
+                          </div>
+                          <p className="text-xs text-greenDark/60 line-clamp-2">{n.message}</p>
+                          <p className="text-[10px] text-greenDark/40 mt-1">{new Date(n.createdAt).toLocaleString()}</p>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </nav>
 
         {/* Mobile Toggle */}

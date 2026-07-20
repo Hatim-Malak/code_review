@@ -9,6 +9,7 @@ import { postCheckRun } from "../lib/githubChecks.js";
 import logger from "../lib/logger.js";
 import { uninstallApp } from "../lib/githubAuth.js"
 import User from "../models/user.model.js";
+import { dispatchReviewNotification } from "../lib/notification.service.js";
 
 
 const SEVERITY_RANK = { info: 0, warning: 1, error: 2 };
@@ -323,6 +324,8 @@ export const handleAiReviewWebhook = async (req, res, next) => {
 
     const octokit = octokitForInstallation(repo.installationId);
     await postCheckRun(octokit, repo, headSha, { status: "completed", findings: filteredFindings });
+    
+    await dispatchReviewNotification(repo, Number(prNumber), filteredFindings, null, req.app.locals.io);
 
     res.status(200).json({ message: "Webhook processed successfully" });
   } catch (error) {

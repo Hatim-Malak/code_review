@@ -24,6 +24,7 @@ const userSchema = new mongoose.Schema(
             notifications: {
                 reviewCompleted: { type: String, enum: ["in_app", "email", "none"], default: "in_app" },
                 findingsNeedAttention: { type: String, enum: ["in_app", "email", "none"], default: "in_app" },
+                reviewFailed: { type: String, enum: ["in_app", "email", "none"], default: "in_app" },
                 emailDigest: { type: Boolean, default: false },
             },
             review: {

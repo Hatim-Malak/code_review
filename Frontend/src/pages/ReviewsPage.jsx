@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useAuth } from "../store/useAuthStore.js";
 import { useReviewStore } from "../store/useReviewStore.js";
 import CustomNavbar from "../components/CustomNavbar.jsx";
@@ -61,6 +62,7 @@ const ReviewsPage = () => {
     loadReviews,
   } = useReviewStore();
 
+  const [searchParams, setSearchParams] = useSearchParams();
   const [searchQuery, setSearchQuery] = useState("");
   const [prSearchQuery, setPrSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
@@ -88,6 +90,22 @@ const ReviewsPage = () => {
     
     return () => disconnectSocket();
   }, []);
+
+  useEffect(() => {
+    const qRepoId = searchParams.get("repoId");
+    const qPrNumber = searchParams.get("prNumber");
+    
+    if (qRepoId && repos.length > 0) {
+      const repo = repos.find(r => r._id === qRepoId);
+      if (repo) {
+        selectRepo(repo);
+        if (qPrNumber) {
+          loadReviewDetail(qPrNumber);
+        }
+      }
+      setSearchParams({});
+    }
+  }, [searchParams, repos, selectRepo, loadReviewDetail, setSearchParams]);
 
   const filteredRepos = repos.filter(repo => 
     repo.name.toLowerCase().includes(searchQuery.toLowerCase()) ||

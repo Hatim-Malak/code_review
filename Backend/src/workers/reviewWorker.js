@@ -10,6 +10,7 @@ import { postCheckRun } from "../lib/githubChecks.js";
 import { redisConnection } from "../lib/redisConnection.js";
 import { connectdb } from "../lib/db.js";
 import logger from "../lib/logger.js";
+import { dispatchFailureNotification } from "../lib/notification.service.js";
 
 process.on("uncaughtException", () => {
   setTimeout(() => process.exit(1), 500);
@@ -75,6 +76,7 @@ new Worker(
                     prNumber,
                     message: `Review failed: GitHub API returned ${status} (Permanent error).`
                 });
+                await dispatchFailureNotification(repo, prNumber, `GitHub API error (${status})`);
                 return; // Terminate job successfully so it doesn't retry
             }
             
@@ -127,6 +129,10 @@ new Worker(
                 message: `Review failed to start for PR #${prNumber} due to AI service error`
             });
             
+            if (job.attemptsMade >= (job.opts.attempts ?? 3)) {
+                await dispatchFailureNotification(repo, prNumber, "AI service error (Retries exhausted)");
+            }
+            
             throw error; // Let BullMQ retry
         }
     },
@@ -169,6 +175,11 @@ new Worker(
                 prNumber: review.prNumber,
                 message: `Review for PR #${review.prNumber} failed due to timeout (no AI webhook received)`
             });
+            
+            const repo = await Repo.findById(review.repoId);
+            if (!repo) continue;
+            
+            await dispatchFailureNotification(repo, review.prNumber, "Timeout");
         }
     },
     { connection: redisConnection }
