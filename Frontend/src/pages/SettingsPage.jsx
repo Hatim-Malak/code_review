@@ -54,14 +54,15 @@ const SettingsPage = () => {
   };
 
   return (
-    <>
-    <CustomNavbar logo="./HatMind.jpg" items={navItems} />
-    <div className="min-h-screen pt-20 bg-cream">
-      <div className="max-w-6xl mx-auto px-4 py-8">
-        <h1 className="text-3xl font-bold text-greenDark mb-8">Settings</h1>
-        <div className="flex flex-col md:flex-row gap-8">
-          <aside className="w-full md:w-64 shrink-0">
-            <nav className="flex flex-col gap-2">
+    <div className="bg-cream flex flex-col h-screen w-full overflow-hidden">
+      <CustomNavbar logo="./HatMind.jpg" items={navItems} dashboardMode={true} />
+      <div className="flex-1 flex overflow-hidden">
+        {/* Left Sidebar */}
+        <aside className="w-full md:w-72 shrink-0 border-r border-greenDark/10 bg-white/30 flex flex-col h-full overflow-y-auto [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-greenDark/20 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-greenDark/40">
+          <div className="p-6 pb-2">
+            <h1 className="text-2xl font-bold text-greenDark">Settings</h1>
+          </div>
+          <nav className="flex flex-col gap-2 p-4">
               {tabs.map((tab) => {
                 const Icon = tab.icon;
                 const isActive = activeTab === tab.id;
@@ -83,17 +84,16 @@ const SettingsPage = () => {
                 );
               })}
             </nav>
-          </aside>
+        </aside>
 
-          <main className="flex-1 min-w-0">
-            <div className="bg-white/60 backdrop-blur-md rounded-2xl shadow-sm border border-greenDark/10 p-6 md:p-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-              {renderContent()}
-            </div>
-          </main>
-        </div>
+        {/* Right Content */}
+        <main className="flex-1 h-full overflow-y-auto p-6 md:p-10 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-greenDark/20 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-greenDark/40 bg-cream/50 relative">
+          <div className="bg-white/60 backdrop-blur-md rounded-2xl shadow-sm border border-greenDark/10 p-6 md:p-8 animate-in fade-in slide-in-from-bottom-4 duration-500 w-full h-auto min-h-full">
+            {renderContent()}
+          </div>
+        </main>
       </div>
     </div>
-    </>
   );
 };
 

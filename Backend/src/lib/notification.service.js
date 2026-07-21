@@ -1,6 +1,7 @@
 import User from "../models/user.model.js";
 import Notification from "../models/notification.model.js";
 import logger from "./logger.js";
+import { redisConnection } from "./redisConnection.js";
 
 const buildCompletedNotification = (repo, prNumber, errorCount, warningCount, infoCount) => {
   return {
@@ -44,7 +45,7 @@ const buildFailedNotification = (repo, prNumber, reason) => {
   };
 };
 
-const deliver = async (preference, user, notificationData, io = null) => {
+const deliver = async (preference, user, notificationData) => {
   if (preference === "none") return;
 
   if (preference === "in_app" || preference === "email") {
@@ -54,10 +55,10 @@ const deliver = async (preference, user, notificationData, io = null) => {
       ...notificationData
     });
 
-    // Emit real-time if IO is provided
-    if (io) {
-      io.to(user._id.toString()).emit("newNotification", notification);
-    }
+    await redisConnection.publish("notifications",JSON.stringify({
+      userId:user._id.toString(),
+      notification:notification.toObject(),
+    }));
 
     if (preference === "email") {
       // Mock email delivery for now

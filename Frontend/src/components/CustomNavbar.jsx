@@ -5,7 +5,7 @@ import { useNotificationStore } from "../store/useNotificationStore.js";
 import { useReviewStore } from "../store/useReviewStore.js";
 import { useAuth } from "../store/useAuthStore.js";
 
-const CustomNavbar = ({ items, logo, className = "", onSidebarToggle, dashboardMode = false, indexingStatus }) => {
+const CustomNavbar = ({ items, logo, className = "", onSidebarToggle, dashboardMode = false, indexingStatus, darkTheme = false }) => {
   const [isScrolled, setIsScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const location = useLocation();
@@ -51,10 +51,10 @@ const CustomNavbar = ({ items, logo, className = "", onSidebarToggle, dashboardM
   return (
     <header
       className={`${
-        dashboardMode ? "bg-cream border-b border-greenDark/10 py-4" : "fixed top-0 left-0 right-0 py-5"
+        dashboardMode ? `${darkTheme ? 'bg-[#050505] border-white/10' : 'bg-cream border-greenDark/10'} border-b py-4` : "fixed top-0 left-0 right-0 py-5"
       } z-50 transition-all duration-300 w-full ${
         (!dashboardMode && isScrolled)
-          ? "bg-cream/80 backdrop-blur-md shadow-sm !py-3"
+          ? `${darkTheme ? 'bg-[#050505]/80' : 'bg-cream/80'} backdrop-blur-md shadow-sm !py-3`
           : (!dashboardMode ? "bg-transparent" : "")
       } ${className}`}
     >
@@ -76,7 +76,7 @@ const CustomNavbar = ({ items, logo, className = "", onSidebarToggle, dashboardM
               alt="Logo" 
               className="h-10 w-auto rounded-xl object-contain transition-transform group-hover:scale-105 shadow-md" 
             />
-            <span className="text-2xl font-black tracking-tighter text-greenDark">
+            <span className={`text-2xl font-black tracking-tighter ${darkTheme ? 'text-cream' : 'text-greenDark'}`}>
               HatMind
             </span>
           </Link>
@@ -122,14 +122,14 @@ const CustomNavbar = ({ items, logo, className = "", onSidebarToggle, dashboardM
           )}
 
         {/* Desktop Nav */}
-          <nav className="hidden md:flex items-center gap-1 bg-cream/50 backdrop-blur-sm border border-greenDark/10 p-1 rounded-full shadow-sm">
+          <nav className={`hidden md:flex items-center gap-1 ${darkTheme ? 'bg-white/5 border-white/10' : 'bg-cream/50 border-greenDark/10'} backdrop-blur-sm border p-1 rounded-full shadow-sm`}>
           {items.map((item, idx) => {
             const isActive = location.pathname === item.href;
             return item.onClick ? (
               <button
                 key={idx}
                 onClick={item.onClick}
-                className="px-6 py-2 rounded-full text-sm font-bold transition-all duration-300 text-greenDark hover:bg-greenDark/10"
+                className={`px-6 py-2 rounded-full text-sm font-bold transition-all duration-300 ${darkTheme ? 'text-cream hover:bg-white/10' : 'text-greenDark hover:bg-greenDark/10'}`}
               >
                 {item.label}
               </button>
@@ -139,8 +139,8 @@ const CustomNavbar = ({ items, logo, className = "", onSidebarToggle, dashboardM
                 to={item.href}
                 className={`px-6 py-2 rounded-full text-sm font-bold transition-all duration-300 ${
                   isActive
-                    ? "bg-greenDark text-cream shadow-md"
-                    : "text-greenDark hover:bg-greenDark/10"
+                    ? (darkTheme ? "bg-greenLight text-[#050505] shadow-md" : "bg-greenDark text-cream shadow-md")
+                    : (darkTheme ? "text-cream hover:bg-white/10" : "text-greenDark hover:bg-greenDark/10")
                 }`}
               >
                 {item.label}
@@ -153,11 +153,11 @@ const CustomNavbar = ({ items, logo, className = "", onSidebarToggle, dashboardM
             <div className="relative flex items-center ml-2 mr-2">
               <button 
                 onClick={() => setShowDropdown(!showDropdown)}
-                className="relative p-2 text-greenDark hover:bg-greenDark/10 rounded-full transition-colors"
+                className={`relative p-2 rounded-full transition-colors ${darkTheme ? 'text-cream hover:bg-white/10' : 'text-greenDark hover:bg-greenDark/10'}`}
               >
                 <Bell size={20} />
                 {unreadCount > 0 && (
-                  <span className="absolute top-0 right-0 h-4 w-4 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center border-2 border-cream">
+                  <span className={`absolute top-0 right-0 h-4 w-4 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center border-2 ${darkTheme ? 'border-[#050505]' : 'border-cream'}`}>
                     {unreadCount > 9 ? '9+' : unreadCount}
                   </span>
                 )}
@@ -209,7 +209,7 @@ const CustomNavbar = ({ items, logo, className = "", onSidebarToggle, dashboardM
 
         {/* Mobile Toggle */}
         <button
-          className="md:hidden text-greenDark p-2 bg-cream/50 rounded-full border border-greenDark/10"
+          className={`md:hidden p-2 rounded-full border ${darkTheme ? 'text-cream bg-white/5 border-white/10' : 'text-greenDark bg-cream/50 border-greenDark/10'}`}
           onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
         >
           {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
@@ -219,7 +219,7 @@ const CustomNavbar = ({ items, logo, className = "", onSidebarToggle, dashboardM
 
       {/* Mobile Nav */}
       <div
-        className={`md:hidden absolute top-full left-0 w-full bg-cream shadow-xl border-t border-greenDark/10 transition-all duration-300 origin-top overflow-hidden ${
+        className={`md:hidden absolute top-full left-0 w-full shadow-xl border-t transition-all duration-300 origin-top overflow-hidden ${darkTheme ? 'bg-[#050505] border-white/10' : 'bg-cream border-greenDark/10'} ${
           mobileMenuOpen ? "max-h-96 opacity-100" : "max-h-0 opacity-0"
         }`}
       >

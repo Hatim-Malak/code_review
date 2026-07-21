@@ -88,6 +88,18 @@ queueEventsConnection.on("error", (err) => {
   logger.warn(`QueueEvents Redis connection error: ${err.message}`);
 });
 
+const notificationSubscriber = redisConnection.duplicate();
+notificationSubscriber.subscribe("notifications");
+notificationSubscriber.on("message",(channel,message)=>{
+  if(channel !== "notificataions") return;
+  try {
+    const {userId,notification} = JSON.parse(message);
+    io.to(userId).emit("newNotification",notification);
+  } catch (error) {
+    logger.error(`[notificationSubscriber] failed to parse message: ${error.message}`)
+  }
+})
+
 async function emitToRepoOwner(repoId, event, payload) {
   if (!repoId) return;
   const repo = await Repo.findById(repoId);

@@ -3,14 +3,32 @@ import Repo from "../models/repo.model.js";
 import Review from "../models/review.model.js";
 import Installation from "../models/installation.model.js";
 
+const repoCache = new Map();
+const CACHE_TTL = 10000; // 10 seconds cache to optimize performance
+
+async function getRepoIdsForUser(userId) {
+  const now = Date.now();
+  const cached = repoCache.get(userId.toString());
+  if (cached && cached.expiresAt > now) {
+    return cached.repoIds;
+  }
+
+  const userInstallations = await Installation.find({ userId });
+  const validInstallationIds = userInstallations.map(i => i.installationId);
+  const repos = await Repo.find({ installationId: { $in: validInstallationIds } });
+  const repoIds = repos.map(r => r._id);
+
+  repoCache.set(userId.toString(), {
+    repoIds,
+    expiresAt: now + CACHE_TTL
+  });
+
+  return repoIds;
+}
+
 export const getActivityFeed = async (req, res, next) => {
   try {
-    const userInstallations = await Installation.find({ userId: req.user._id });
-    const validInstallationIds = userInstallations.map(i => i.installationId);
-    
-    // Find repos belonging to the user's installations
-    const repos = await Repo.find({ installationId: { $in: validInstallationIds } });
-    const repoIds = repos.map(r => r._id);
+    const repoIds = await getRepoIdsForUser(req.user._id);
 
     // Fetch recent activity
     const activities = await Activity.find({ repoId: { $in: repoIds } })
@@ -20,45 +38,48 @@ export const getActivityFeed = async (req, res, next) => {
 
     // Compute stats
     const totalRepos = repoIds.length;
-    const totalReviews = await Review.countDocuments({ repoId: { $in: repoIds } });
-    
+
     // Calculate dates
     const oneWeekAgo = new Date();
     oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
 
-    const reviewsThisWeek = await Review.countDocuments({ 
-      repoId: { $in: repoIds },
-      createdAt: { $gte: oneWeekAgo }
-    });
-
     // Using aggregation to sum finding counts and determine clean vs attention reviews
-    const findingsResult = await Review.aggregate([
+    const statsResult = await Review.aggregate([
       { $match: { repoId: { $in: repoIds } } },
-      { $project: { 
-          findingCount: { $size: { $ifNull: ["$findings", []] } } 
-        } 
-      },
-      { $group: { 
-          _id: null, 
-          totalFindings: { $sum: "$findingCount" },
+      {
+        $group: {
+          _id: null,
+          totalReviews: { $sum: 1 },
+          reviewsThisWeek: {
+            $sum: {
+              $cond: [{ $gte: ["$createdAt", oneWeekAgo] }, 1, 0]
+            }
+          },
+          totalFindings: {
+            $sum: { $size: { $ifNull: ["$findings", []] } }
+          },
           cleanReviews: {
-            $sum: { $cond: [{ $eq: ["$findingCount", 0] }, 1, 0] }
+            $sum: {
+              $cond: [{ $eq: [{ $size: { $ifNull: ["$findings", []] } }, 0] }, 1, 0]
+            }
           },
           attentionReviews: {
-            $sum: { $cond: [{ $gt: ["$findingCount", 0] }, 1, 0] }
+            $sum: {
+              $cond: [{ $gt: [{ $size: { $ifNull: ["$findings", []] } }, 0] }, 1, 0]
+            }
           }
-        } 
+        }
       }
     ]);
-    
-    const statsData = findingsResult.length > 0 ? findingsResult[0] : { totalFindings: 0, cleanReviews: 0, attentionReviews: 0 };
+
+    const statsData = statsResult.length > 0 ? statsResult[0] : { totalReviews: 0, reviewsThisWeek: 0, totalFindings: 0, cleanReviews: 0, attentionReviews: 0 };
 
     res.json({
       activities,
       stats: {
         totalRepos,
-        totalReviews,
-        reviewsThisWeek,
+        totalReviews: statsData.totalReviews,
+        reviewsThisWeek: statsData.reviewsThisWeek,
         totalFindings: statsData.totalFindings,
         cleanReviews: statsData.cleanReviews,
         attentionReviews: statsData.attentionReviews
