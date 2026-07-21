@@ -3,6 +3,7 @@ import Installation from "../models/installation.model.js";
 import Repo from "../models/repo.model.js";
 import { v2 as cloudinary } from "cloudinary";
 import { uninstallApp } from "../lib/githubAuth.js";
+import logger from "../lib/logger.js";
 
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -85,7 +86,7 @@ export const disconnectInstallation = async (req, res, next) => {
       await uninstallApp(installation.installationId);
     } catch (uninstallError) {
       // It might already be uninstalled on GitHub's side, log and continue
-      console.error("Failed to uninstall from GitHub API:", uninstallError);
+      logger.error(`Failed to uninstall from GitHub API: ${uninstallError.message || uninstallError}`);
     }
 
     installation.userId = null;

@@ -128,7 +128,13 @@ export const handleWbhook = async (req, res, next) => {
       }
     }
 
-    req.app.locals.io.emit("dashboardUpdate", { type: "github_webhook", event });
+    const instId = payload.installation?.id;
+    if (instId) {
+      const inst = await Installation.findOne({ installationId: instId });
+      if (inst && inst.userId) {
+        req.app.locals.io.to(inst.userId.toString()).emit("dashboardUpdate", { type: "github_webhook", event });
+      }
+    }
   } catch (error) {
     next(error);
   }

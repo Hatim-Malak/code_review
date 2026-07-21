@@ -346,7 +346,7 @@ export async function fullyUninstall(req, res, next) {
     try {
       await uninstallApp(repo.installationId);
     } catch (uninstallError) {
-      console.error("Failed to uninstall from GitHub API:", uninstallError);
+      logger.error(`Failed to uninstall from GitHub API: ${uninstallError.message || uninstallError}`);
     }
 
     try {
@@ -356,7 +356,7 @@ export async function fullyUninstall(req, res, next) {
         body: JSON.stringify({ namespace: repo.namespace }),
       });
     } catch (err) {
-      console.error("Failed to delete namespace in AI service:", err);
+      logger.error(`Failed to delete namespace in AI service: ${err.message || err}`);
     }
 
     await repo.deleteOne();

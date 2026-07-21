@@ -5,6 +5,7 @@ import mongoose from "mongoose";
 import Installation from "../models/installation.model.js";
 import Repo from "../models/repo.model.js";
 import Chat from "../models/chat.model.js";
+import logger from "../lib/logger.js";
 
 export const signup = async (req,res) =>{
     const {fullName,email,password} = req.body
@@ -40,7 +41,7 @@ export const signup = async (req,res) =>{
             res.status(400).json({message:"Invalid user data"})
         }
     } catch (error) {
-        console.log("error in signup controller",error.message)
+        logger.error(`error in signup controller: ${error.message}`)
         res.status(500).json({message:"Internal server error"})
     }
 }
@@ -64,7 +65,7 @@ export const login = async (req,res) =>{
         
         res.status(200).json(userObj)
     } catch (error) {
-        console.log("Error in login controller",error.message)
+        logger.error(`Error in login controller: ${error.message}`)
         res.status(500).json({message:"Internal server error"})
     }
 }
@@ -74,7 +75,7 @@ export const logout = async (req,res) =>{
         res.cookie("jwt","",{maxAge:0})
         res.status(200).json({message:"Loged out Succesfully"})
     } catch (error) {
-        console.log("Error in logout controller ",error.message)
+        logger.error(`Error in logout controller: ${error.message}`)
         res.status(500).json({message:"Internal server error"})        
     }
 }
@@ -85,7 +86,7 @@ export const check = async (req,res) =>{
         if (!user) return res.status(401).json({ message: "User not found" });
         res.status(200).json(user)
     } catch (error) {
-        console.log("error in checkAuth controller",error.message)
+        logger.error(`error in checkAuth controller: ${error.message}`)
         res.status(500).json({message:"Internal server error"})
     }
 }

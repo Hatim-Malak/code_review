@@ -77,21 +77,28 @@ io.on("connection", (socket) => {
 // Setup QueueEvents for real-time indexing progress
 // QueueEvents MUST have its own dedicated Redis connection (BullMQ requirement)
 import Redis from "ioredis";
-const queueEventsConnection = new Redis(process.env.UPSTASH_REDIS_URL, {
+const indexQueueEventsConnection = new Redis(process.env.UPSTASH_REDIS_URL, {
   maxRetriesPerRequest: null,
 });
-const indexQueueEvents = new QueueEvents("index-repo", { connection: queueEventsConnection });
-const reviewQueueEvents = new QueueEvents("review-pr", { connection: queueEventsConnection });
+const reviewQueueEventsConnection = new Redis(process.env.UPSTASH_REDIS_URL, {
+  maxRetriesPerRequest: null,
+});
+
+const indexQueueEvents = new QueueEvents("index-repo", { connection: indexQueueEventsConnection });
+const reviewQueueEvents = new QueueEvents("review-pr", { connection: reviewQueueEventsConnection });
 logger.info("[Server] QueueEvents listeners attached for index-repo and review-pr queues");
 
-queueEventsConnection.on("error", (err) => {
-  logger.warn(`QueueEvents Redis connection error: ${err.message}`);
+indexQueueEventsConnection.on("error", (err) => {
+  logger.warn(`indexQueueEvents Redis connection error: ${err.message}`);
+});
+reviewQueueEventsConnection.on("error", (err) => {
+  logger.warn(`reviewQueueEvents Redis connection error: ${err.message}`);
 });
 
 const notificationSubscriber = redisConnection.duplicate();
 notificationSubscriber.subscribe("notifications");
 notificationSubscriber.on("message",(channel,message)=>{
-  if(channel !== "notificataions") return;
+  if(channel !== "notifications") return;
   try {
     const {userId,notification} = JSON.parse(message);
     io.to(userId).emit("newNotification",notification);
