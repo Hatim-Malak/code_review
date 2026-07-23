@@ -8,14 +8,15 @@ import {
   disconnectRepo,
   updateRepoPreferences,
 } from "../controller/settings.controller.js";
+import { standardLimiter, mutationLimiter } from "../middleware/rateLimiter.js";
 
 const router = express.Router();
 
-router.patch("/profile", protectRoute, updateProfile);
-router.patch("/preferences", protectRoute, updatePreferences);
-router.get("/github", protectRoute, getLinkedInstallations);
-router.post("/github/disconnect/:installationId", protectRoute, disconnectInstallation);
-router.post("/repos/:owner/:repo/disconnect", protectRoute, disconnectRepo);
-router.patch("/repos/:owner/:repo/preferences", protectRoute, updateRepoPreferences);
+router.patch("/profile", protectRoute, standardLimiter, updateProfile);
+router.patch("/preferences", protectRoute, standardLimiter, updatePreferences);
+router.get("/github", protectRoute, standardLimiter, getLinkedInstallations);
+router.post("/github/disconnect/:installationId", protectRoute, mutationLimiter, disconnectInstallation);
+router.post("/repos/:owner/:repo/disconnect", protectRoute, mutationLimiter, disconnectRepo);
+router.patch("/repos/:owner/:repo/preferences", protectRoute, standardLimiter, updateRepoPreferences);
 
 export default router;

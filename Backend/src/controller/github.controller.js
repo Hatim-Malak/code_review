@@ -15,7 +15,7 @@ const verifySignature = (req) => {
       .createHmac("sha256", process.env.GITHUB_WEBHOOK_SECRET)
       .update(req.body)
       .digest("hex");
-  return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
+  return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected));//this function is used instead of normal euqal because it is more secure against timing attacks
 };
 
 const isTriggerActive = async (repo, trigger) => {
