@@ -327,6 +327,13 @@ export const handleAiReviewWebhook = async (req, res, next) => {
     
     await dispatchReviewNotification(repo, Number(prNumber), filteredFindings, null, req.app.locals.io);
 
+    if (repo.claimedByUserId) {
+      req.app.locals.io.to(repo.claimedByUserId.toString()).emit("dashboardUpdate", { 
+        type: "review_completed", 
+        prNumber: Number(prNumber) 
+      });
+    }
+
     res.status(200).json({ message: "Webhook processed successfully" });
   } catch (error) {
     next(error);

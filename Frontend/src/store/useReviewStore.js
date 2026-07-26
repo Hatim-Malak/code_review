@@ -89,29 +89,53 @@ export const useReviewStore = create((set, get) => ({
       }
     });
 
+    let dashboardUpdateTimeout = null;
+    let pendingUpdates = new Set();
+
     socket.on("dashboardUpdate", (data) => {
       console.log("dashboardUpdate event received:", data);
       
-      // Concurrently fetch global data, bypassing cache
-      Promise.allSettled([
-          get().loadRepos({ force: true }),
-          get().fetchDashboard({ force: true })
-      ]);
+      if (data?.type) pendingUpdates.add(data.type);
+      else pendingUpdates.add("unknown");
       
-      // Invalidate the entire reviews cache
-      set({ reviewsLastFetched: {} });
+      if (dashboardUpdateTimeout) clearTimeout(dashboardUpdateTimeout);
       
-      // Re-Open Behavior: If a user has a repo currently selected, reset to page 1 and fetch fresh data
-      const selectedRepo = get().selectedRepo;
-      if (selectedRepo) {
-          const repoKey = `${selectedRepo.owner}/${selectedRepo.name}`;
-          get().loadReviews(repoKey, 1, { force: true });
-          
-          const selectedReview = get().selectedReview;
-          if (selectedReview) {
-              get().loadReviewDetail(selectedReview.prNumber);
-          }
-      }
+      dashboardUpdateTimeout = setTimeout(() => {
+        const types = new Set(pendingUpdates);
+        pendingUpdates.clear();
+        
+        const tasks = [];
+        
+        const needsRepoUpdate = types.has("unknown") || types.has("github_webhook") || types.has("index_completed") || types.has("index_failed");
+        const needsDashboardUpdate = types.has("unknown") || types.has("github_webhook") || types.has("review_completed");
+        const needsReviewUpdate = types.has("unknown") || types.has("review_started") || types.has("review_completed");
+        
+        if (needsRepoUpdate) {
+            tasks.push(get().loadRepos({ force: true }));
+        }
+        
+        if (needsDashboardUpdate) {
+            tasks.push(get().fetchDashboard({ force: true }));
+        }
+        
+        if (needsReviewUpdate) {
+            set({ reviewsLastFetched: {} });
+            const selectedRepo = get().selectedRepo;
+            if (selectedRepo) {
+                const repoKey = `${selectedRepo.owner}/${selectedRepo.name}`;
+                tasks.push(get().loadReviews(repoKey, 1, { force: true }));
+                
+                const selectedReview = get().selectedReview;
+                if (selectedReview) {
+                    tasks.push(get().loadReviewDetail(selectedReview.prNumber));
+                }
+            }
+        }
+        
+        if (tasks.length > 0) {
+            Promise.allSettled(tasks);
+        }
+      }, 500);
     });
 
     set({ socket });
