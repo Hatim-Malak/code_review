@@ -3,7 +3,9 @@ import Installation from "../models/installation.model.js";
 import Repo from "../models/repo.model.js";
 import { reviewQueue, indexQueue } from "../lib/queue.js";
 import User from "../models/user.model.js";
-
+import logger from "../lib/logger.js";
+import Review from "../models/review.model.js";
+import Activity from "../models/activity.model.js";
 const verifySignature = (req) => {
   const signature = req.headers["x-hub-signature-256"];
   if (!signature) {
@@ -40,13 +42,20 @@ export const handleWbhook = async (req, res, next) => {
     const event = req.headers["x-github-event"];
     const payload = JSON.parse(req.body.toString("utf8"));
 
-    res.status(202).json({ recieved: true });
+    logger.info(`[Webhook] Received event: ${event}, action: ${payload.action}`);
 
     switch (event) {
       case "installation": {
         const { installation, action } = payload;
 
         if (action === "deleted") {
+          logger.info(`[Webhook] Installation deleted: ${installation.id}`);
+          // Cascading delete
+          const repos = await Repo.find({ installationId: installation.id });
+          for (const r of repos) {
+             await Review.deleteMany({ repoId: r._id });
+             await Activity.deleteMany({ repoId: r._id });
+          }
           await Repo.deleteMany({ installationId: installation.id });
           await Installation.findOneAndDelete({ installationId: installation.id });
           break;
@@ -65,6 +74,7 @@ export const handleWbhook = async (req, res, next) => {
             { owner, name, installationId: installation.id, namespace: `repo:${installation.id}:${owner}/${name}` },
             { upsert: true, new: true }
           );
+          logger.info(`[Webhook] Queueing full index for ${owner}/${name}`);
           await indexQueue.add("full-index", { repoId: repo._id.toString() });
         }
         break;
@@ -76,7 +86,12 @@ export const handleWbhook = async (req, res, next) => {
         if (action === "removed") {
           for (const r of payload.repositories_removed || []) {
             const [owner, name] = r.full_name.split("/");
-            await Repo.findOneAndDelete({ owner, name, installationId: installation.id });
+            const repo = await Repo.findOne({ owner, name, installationId: installation.id });
+            if (repo) {
+              await Review.deleteMany({ repoId: repo._id });
+              await Activity.deleteMany({ repoId: repo._id });
+              await repo.deleteOne();
+            }
           }
           break;
         }
@@ -88,20 +103,32 @@ export const handleWbhook = async (req, res, next) => {
             { $set: { owner, name, installationId: installation.id, namespace: `repo:${installation.id}:${owner}/${name}` } },
             { upsert: true, new: true }
           );
+          logger.info(`[Webhook] Queueing full index for ${owner}/${name}`);
           await indexQueue.add("full-index", { repoId: repo._id.toString() });
         }
         break;
       }
 
       case "pull_request": {
-        if (!["opened", "synchronize", "reopened"].includes(payload.action)) break;
+        if (!["opened", "synchronize", "reopened"].includes(payload.action)) {
+          logger.info(`[Webhook] Ignored PR action: ${payload.action}`);
+          break;
+        }
         const { repository, pull_request, installation } = payload;
         const repo = await Repo.findOne({
           owner: repository.owner.login,
           name: repository.name,
         });
-        if (!repo) break;
-        if (!(await isTriggerActive(repo, "pr"))) break;
+        if (!repo) {
+          logger.warn(`[Webhook] Repo not found in DB: ${repository.owner.login}/${repository.name}`);
+          break;
+        }
+        if (!(await isTriggerActive(repo, "pr"))) {
+          logger.info(`[Webhook] PR trigger disabled for ${repository.owner.login}/${repository.name}`);
+          break;
+        }
+        
+        logger.info(`[Webhook] Queueing PR review for PR #${pull_request.number} on ${repository.owner.login}/${repository.name}`);
         await reviewQueue.add("review-pr", {
           repoId: repo._id.toString(),
           installationId: installation.id,
@@ -117,8 +144,15 @@ export const handleWbhook = async (req, res, next) => {
           owner: repository.owner.login,
           name: repository.name,
         });
-        if (!repo || ref !== `refs/heads/${repo.defaultBranch}`) break;
-        if (!(await isTriggerActive(repo, "push"))) break;
+        if (!repo || ref !== `refs/heads/${repo.defaultBranch}`) {
+           logger.info(`[Webhook] Ignored push to non-default branch or unknown repo: ${ref}`);
+           break;
+        }
+        if (!(await isTriggerActive(repo, "push"))) {
+           logger.info(`[Webhook] Push trigger disabled for ${repository.owner.login}/${repository.name}`);
+           break;
+        }
+        logger.info(`[Webhook] Queueing incremental index for ${repository.owner.login}/${repository.name}`);
         await indexQueue.add("incremental-index", {
           repoId: repo._id.toString(),
           installationId: installation.id,
@@ -135,7 +169,12 @@ export const handleWbhook = async (req, res, next) => {
         req.app.locals.io.to(inst.userId.toString()).emit("dashboardUpdate", { type: "github_webhook", event });
       }
     }
+    
+    // Send response after successful processing
+    res.status(202).json({ recieved: true });
   } catch (error) {
+    logger.error(`[Webhook] Error processing webhook: ${error.message}`);
+    // If headers already sent, next(error) will crash. Since we moved the response to the end, it's safe.
     next(error);
   }
 };

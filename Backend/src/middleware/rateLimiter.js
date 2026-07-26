@@ -1,4 +1,4 @@
-import rateLimit, { ipKeyGenerator } from "express-rate-limit";
+import rateLimit from "express-rate-limit";
 import logger from "../lib/logger.js";
 
 const rateLimitHandler = (req, res) => {
@@ -8,12 +8,31 @@ const rateLimitHandler = (req, res) => {
   });
 };
 
+const customIpKeyGenerator = (req) => {
+  let ip = req.ip || req.connection?.remoteAddress || '127.0.0.1';
+  // Strip port if it exists (e.g. 140.82.115.174:42510)
+  return ip.replace(/:\d+$/, '');
+};
+
+const userOrIpKeyGenerator = (req) => req.user?._id?.toString() || customIpKeyGenerator(req);
+
 // Tier 1: Auth bruteforce (IP-keyed, strictest)
 export const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,   // 15 minutes
   max: 10,
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator: customIpKeyGenerator,
+  handler: rateLimitHandler,
+});
+
+// Tier 1.5: OTP Generation (IP-keyed, very strict)
+export const otpLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,   // 15 minutes
+  max: 2, // Only 2 forgot-password requests per 15 minutes
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: customIpKeyGenerator,
   handler: rateLimitHandler,
 });
 
@@ -21,7 +40,7 @@ export const authLimiter = rateLimit({
 export const chatLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 20,
-  keyGenerator: (req) => req.user?._id?.toString() || ipKeyGenerator(req),
+  keyGenerator: userOrIpKeyGenerator,
   standardHeaders: true,
   legacyHeaders: false,
   handler: rateLimitHandler,
@@ -31,7 +50,7 @@ export const chatLimiter = rateLimit({
 export const mutationLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 10,
-  keyGenerator: (req) => req.user?._id?.toString() || ipKeyGenerator(req),
+  keyGenerator: userOrIpKeyGenerator,
   standardHeaders: true,
   legacyHeaders: false,
   handler: rateLimitHandler,
@@ -41,7 +60,7 @@ export const mutationLimiter = rateLimit({
 export const standardLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 60,
-  keyGenerator: (req) => req.user?._id?.toString() || ipKeyGenerator(req),
+  keyGenerator: userOrIpKeyGenerator,
   standardHeaders: true,
   legacyHeaders: false,
   handler: rateLimitHandler,
@@ -53,5 +72,6 @@ export const webhookLimiter = rateLimit({
   max: 100,
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator: customIpKeyGenerator,
   handler: rateLimitHandler,
 });

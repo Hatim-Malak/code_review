@@ -35,9 +35,12 @@ const repoSchema = new mongoose.Schema(
             default:null
         },
         reviewPreferences: {
-            minSeverity: { type: String, enum: ["info", "warning", "error"] },
-            activeTriggers: { type: [String], enum: ["pr", "push"] },
-            model: { type: String }
+            type: {
+                minSeverity: { type: String, enum: ["info", "warning", "error"] },
+                activeTriggers: { type: [String], enum: ["pr", "push"] },
+                model: { type: String }
+            },
+            default: undefined
         }
     },
     {timestamps:true}

@@ -23,6 +23,16 @@ export const useAuth = create((set,get)=>({
             set({isCheckingAuth:false})
         }
     },
+    requestSignupOtp: async (email) => {
+        try {
+            const res = await axiosInstance.post("/auth/request-signup-otp", { email });
+            toast.success(res.data.message);
+            return true;
+        } catch (error) {
+            toast.error(error.response?.data?.message || "An error occurred");
+            return false;
+        }
+    },
     signUp:async (data)=>{
         set({isSigningUp:true})
         try {
@@ -30,10 +40,12 @@ export const useAuth = create((set,get)=>({
             set({authUser:res.data})
             toast.success("Account created succesfully")
         } catch (error) {
-            toast.error(error.response.data.message)
-        }finally{
+            toast.error(error.response?.data?.message || "An error occurred");
+            return false;
+        } finally {
             set({isSigningUp:false})
         }
+        return true;
     },
     signIn:async (data)=>{
         set({isSigningIn:true})
@@ -53,7 +65,27 @@ export const useAuth = create((set,get)=>({
             set({authUser:null})
             toast.success("Logged out successfully")
         } catch (error) {
-            toast.error(error.response.data.message)
+            toast.error(error.response?.data?.message || "An error occurred");
+        }
+    },
+    forgotPassword: async (data) => {
+        try {
+            const res = await axiosInstance.post("/auth/forgot-password", data);
+            toast.success(res.data.message);
+            return true;
+        } catch (error) {
+            toast.error(error.response?.data?.message || "An error occurred");
+            return false;
+        }
+    },
+    resetPassword: async (data) => {
+        try {
+            const res = await axiosInstance.post("/auth/reset-password", data);
+            toast.success(res.data.message);
+            return true;
+        } catch (error) {
+            toast.error(error.response?.data?.message || "An error occurred");
+            return false;
         }
     }
 }))

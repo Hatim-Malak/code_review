@@ -95,6 +95,11 @@ const LoginPage = () => {
                   placeholder="••••••••"
                 />
               </div>
+              <div className="flex justify-end mt-1">
+                <Link to="/forgot-password" className="text-xs font-bold text-greenLight hover:text-greenDark transition-colors">
+                  Forgot Password?
+                </Link>
+              </div>
             </div>
             
             <button

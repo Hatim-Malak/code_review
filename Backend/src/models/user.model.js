@@ -35,6 +35,22 @@ const userSchema = new mongoose.Schema(
             chat: {
                 defaultModel: { type: String, default: "llama-3.1-8b-instant" },
             },
+        },
+        tokenVersion: {
+            type: Number,
+            default: 0
+        },
+        resetPasswordOtp: {
+            type: String,
+            default: null
+        },
+        resetPasswordOtpExpires: {
+            type: Date,
+            default: null
+        },
+        resetPasswordAttempts: {
+            type: Number,
+            default: 0
         }
     },
     { timestamps: true }
