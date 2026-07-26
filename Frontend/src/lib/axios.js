@@ -1,5 +1,7 @@
 import axios from "axios";
 import toast from "react-hot-toast";
+import { useAuth } from "../store/useAuthStore.js";
+import { useSettingsStore } from "../store/useSettingsStore.js";
 
 export const axiosInstance = new axios.create({
     baseURL:import.meta.env.MODE ==="development"? 'http://localhost:5000/api':"https://hatmind.duckdns.org/api",
@@ -34,9 +36,20 @@ axiosInstance.interceptors.response.use(
       } catch (refreshError) {
         refreshTokenPromise = null;
         // Refresh failed (token expired, invalid tokenVersion, or user not logged in)
-        // Let the application state (e.g., useAuthStore) handle the 401 naturally
+        // Explicitly clear persisted stores to prevent stale/wrong user flashes
+        useAuth.persist?.clearStorage();
+        useSettingsStore.persist?.clearStorage();
+        useAuth.getState().updateAuthUser(null);
+        
         return Promise.reject(refreshError);
       }
+    }
+
+    // Also clear if the refresh itself returns 401
+    if (error.response?.status === 401 && originalRequest.url === '/auth/refresh') {
+        useAuth.persist?.clearStorage();
+        useSettingsStore.persist?.clearStorage();
+        useAuth.getState().updateAuthUser(null);
     }
 
     return Promise.reject(error);

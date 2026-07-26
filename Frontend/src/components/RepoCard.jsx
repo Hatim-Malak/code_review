@@ -1,9 +1,29 @@
 import { Github } from "lucide-react";
+import { useRef } from "react";
+import { useReviewStore } from "../store/useReviewStore.js";
 
 const RepoCard = ({ repo, isSelected, onClick }) => {
+  const loadReviews = useReviewStore(state => state.loadReviews);
+  const hoverTimeout = useRef(null);
+
+  const handleMouseEnter = () => {
+    hoverTimeout.current = setTimeout(() => {
+      const repoKey = `${repo.owner}/${repo.name}`;
+      loadReviews(repoKey, 1);
+    }, 200);
+  };
+
+  const handleMouseLeave = () => {
+    if (hoverTimeout.current) {
+      clearTimeout(hoverTimeout.current);
+    }
+  };
+
   return (
     <button
       onClick={onClick}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
       className={`flex items-center justify-between gap-2 p-3 rounded-xl transition-all duration-300 text-left shadow-sm w-full ${
         isSelected
           ? "bg-greenLight text-cream border border-greenLight shadow-md"

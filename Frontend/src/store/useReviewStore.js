@@ -5,20 +5,28 @@ import { io } from "socket.io-client";
 
 export const useReviewStore = create((set, get) => ({
   repos: [],
+  reposLastFetched: 0,
+  
   selectedRepo: null,
-  reviews: [],
+  
+  // Keyed cache for reviews
+  reviewsByRepoId: {}, 
+  reviewsLastFetched: {},
+  reviewsPageByRepoId: {},
+  hasMoreReviewsByRepoId: {},
+  
   selectedReview: null,
+  
   isLoadingRepos: false,
   isLoadingReviews: false,
   isLoadingReviewDetail: false,
-  reviewsPage: 1,
-  hasMoreReviews: true,
   
   dashboardStats: null,
+  dashboardStatsLastFetched: 0,
   activities: [],
   isLoadingDashboard: true,
   
-  // Indexing progress state — always visible, shows overall repo indexing status
+  // Indexing progress state
   indexingStatus: { total: 0, indexed: 0, progress: 0, isActive: false },
   socket: null,
 
@@ -32,11 +40,17 @@ export const useReviewStore = create((set, get) => ({
     }
   },
 
-  fetchDashboard: async () => {
+  fetchDashboard: async ({ force = false } = {}) => {
+    if (!force && Date.now() - get().dashboardStatsLastFetched < 3 * 60 * 1000) return;
+    
     try {
       set({ isLoadingDashboard: true });
       const res = await axiosInstance.get("/activity");
-      set({ dashboardStats: res.data.stats, activities: res.data.activities });
+      set({ 
+        dashboardStats: res.data.stats, 
+        activities: res.data.activities,
+        dashboardStatsLastFetched: Date.now()
+      });
     } catch (err) {
       console.error("Failed to load dashboard data", err);
     } finally {
@@ -44,7 +58,7 @@ export const useReviewStore = create((set, get) => ({
     }
   },
 
-  connectSocket: () => {
+  connectSocket: (userId) => {
     const existingSocket = get().socket;
     if (existingSocket && existingSocket.connected) return;
 
@@ -53,12 +67,21 @@ export const useReviewStore = create((set, get) => ({
     
     socket.on("connect", () => {
       console.log("ReviewStore Socket connected:", socket.id);
+      if (userId) {
+        socket.emit("joinUserRoom", userId);
+      }
     });
 
+    let lastIndexingFetch = 0;
     socket.on("indexingProgress", (data) => {
       console.log("indexingProgress event received:", data);
-      // When any indexing event fires, re-fetch the real status from the API
-      get().fetchIndexingStatus();
+      
+      // Throttle to at most once per second
+      if (Date.now() - lastIndexingFetch > 1000) {
+          lastIndexingFetch = Date.now();
+          get().fetchIndexingStatus();
+      }
+      
       if (data.status === "completed") {
         toast.success("Repository indexed successfully!");
       } else if (data.status === "failed") {
@@ -68,9 +91,27 @@ export const useReviewStore = create((set, get) => ({
 
     socket.on("dashboardUpdate", (data) => {
       console.log("dashboardUpdate event received:", data);
-      get().loadRepos();
-      get().fetchDashboard();
-      get().loadReviews();
+      
+      // Concurrently fetch global data, bypassing cache
+      Promise.allSettled([
+          get().loadRepos({ force: true }),
+          get().fetchDashboard({ force: true })
+      ]);
+      
+      // Invalidate the entire reviews cache
+      set({ reviewsLastFetched: {} });
+      
+      // Re-Open Behavior: If a user has a repo currently selected, reset to page 1 and fetch fresh data
+      const selectedRepo = get().selectedRepo;
+      if (selectedRepo) {
+          const repoKey = `${selectedRepo.owner}/${selectedRepo.name}`;
+          get().loadReviews(repoKey, 1, { force: true });
+          
+          const selectedReview = get().selectedReview;
+          if (selectedReview) {
+              get().loadReviewDetail(selectedReview.prNumber);
+          }
+      }
     });
 
     set({ socket });
@@ -84,11 +125,13 @@ export const useReviewStore = create((set, get) => ({
     }
   },
 
-  loadRepos: async () => {
+  loadRepos: async ({ force = false } = {}) => {
+    if (!force && Date.now() - get().reposLastFetched < 3 * 60 * 1000) return;
+    
     try {
       set({ isLoadingRepos: true });
       const res = await axiosInstance.get("/repos");
-      set({ repos: res.data });
+      set({ repos: res.data, reposLastFetched: Date.now() });
     } catch (error) {
       console.error("Error loading repos:", error);
       toast.error("Failed to load repositories");
@@ -98,23 +141,44 @@ export const useReviewStore = create((set, get) => ({
   },
 
   selectRepo: (repo) => {
-    set({ selectedRepo: repo, reviews: [], selectedReview: null, reviewsPage: 1, hasMoreReviews: true });
-    get().loadReviews(1);
+    set({ selectedRepo: repo, selectedReview: null });
+    const repoKey = `${repo.owner}/${repo.name}`;
+    get().loadReviews(repoKey, 1);
   },
 
-  loadReviews: async (page = 1) => {
-    const { selectedRepo, reviews } = get();
-    if (!selectedRepo) return;
+  loadReviews: async (repoKey, page = 1, { force = false } = {}) => {
+    if (!repoKey) return;
+    
+    const { reviewsLastFetched } = get();
+    
+    // Conditional fetching: skip if recently fetched, UNLESS it's a forced refetch or pagination
+    if (!force && page === 1 && reviewsLastFetched[repoKey] && (Date.now() - reviewsLastFetched[repoKey] < 3 * 60 * 1000)) {
+        return; // Use cached data
+    }
     
     try {
       set({ isLoadingReviews: true });
-      const res = await axiosInstance.get(`/repos/${selectedRepo.owner}/${selectedRepo.name}/prs?page=${page}&limit=20`);
+      const [owner, name] = repoKey.split("/");
+      const res = await axiosInstance.get(`/repos/${owner}/${name}/prs?page=${page}&limit=20`);
       
-      set({ 
-        reviews: page === 1 ? res.data : [...reviews, ...res.data],
-        reviewsPage: page,
-        hasMoreReviews: res.data.length === 20
-      });
+      set((state) => ({ 
+        reviewsByRepoId: {
+            ...state.reviewsByRepoId,
+            [repoKey]: page === 1 ? res.data : [...(state.reviewsByRepoId[repoKey] || []), ...res.data]
+        },
+        reviewsPageByRepoId: {
+            ...state.reviewsPageByRepoId,
+            [repoKey]: page
+        },
+        hasMoreReviewsByRepoId: {
+            ...state.hasMoreReviewsByRepoId,
+            [repoKey]: res.data.length === 20
+        },
+        reviewsLastFetched: {
+            ...state.reviewsLastFetched,
+            [repoKey]: Date.now()
+        }
+      }));
     } catch (error) {
       console.error("Error loading reviews:", error);
       toast.error("Failed to load reviews");
@@ -144,18 +208,15 @@ export const useReviewStore = create((set, get) => ({
     if (!selectedRepo || !selectedReview || !findingId) return;
 
     try {
-      // Optimistic update for the review detail
       const prevReview = { ...selectedReview };
       const updatedFindings = selectedReview.findings.map(f => 
         f._id === findingId ? { ...f, resolved } : f
       );
       set({ selectedReview: { ...selectedReview, findings: updatedFindings } });
 
-      // Optimistic update for the repo card red dot
       const { repos } = get();
       const updatedRepos = repos.map(r => {
         if (r._id === selectedRepo._id) {
-          // If we resolved it, decrement, if we unresolved it, increment
           return { ...r, attentionCount: Math.max(0, r.attentionCount + (resolved ? -1 : 1)) };
         }
         return r;
@@ -169,19 +230,26 @@ export const useReviewStore = create((set, get) => ({
     } catch (error) {
       console.error("Error toggling finding resolve:", error);
       toast.error("Failed to update finding status");
-      // Could revert optimistic update here if desired
     }
   },
 
   reRunReview: async (prNumber) => {
-    const { selectedRepo } = get();
+    const { selectedRepo, reviewsByRepoId } = get();
     if (!selectedRepo) return;
+    
+    const repoKey = `${selectedRepo.owner}/${selectedRepo.name}`;
 
     try {
-      // Optimistically update list and detail status
-      const { reviews, selectedReview } = get();
+      const reviews = reviewsByRepoId[repoKey];
+      const { selectedReview } = get();
+      
       if (reviews) {
-        set({ reviews: reviews.map(r => r.prNumber === prNumber ? { ...r, status: 'in_progress' } : r) });
+        set((state) => ({
+            reviewsByRepoId: {
+                ...state.reviewsByRepoId,
+                [repoKey]: reviews.map(r => r.prNumber === prNumber ? { ...r, status: 'in_progress' } : r)
+            }
+        }));
       }
       if (selectedReview && selectedReview.prNumber === prNumber) {
         set({ selectedReview: { ...selectedReview, status: 'in_progress' } });
@@ -196,7 +264,7 @@ export const useReviewStore = create((set, get) => ({
   },
 
   clearSelection: () => {
-    set({ selectedRepo: null, reviews: [], selectedReview: null });
+    set({ selectedRepo: null, selectedReview: null });
   },
 
   clearReviewDetail: () => {

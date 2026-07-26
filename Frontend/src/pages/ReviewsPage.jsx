@@ -9,6 +9,8 @@ import ReviewDetail from "../components/ReviewDetail.jsx";
 import { Helmet } from "react-helmet-async";
 import { GitPullRequest, ArrowLeft, Plus, GitMerge, FolderGit2, Search, ExternalLink, Activity, Box, ShieldAlert, CheckCircle, RefreshCw, XCircle, Sparkles } from "lucide-react";
 import { axiosInstance } from "../lib/axios.js";
+import { useDebounce } from "../hooks/useDebounce.js";
+import { useIntersectionObserver } from "../hooks/useIntersectionObserver.js";
 
 const ActivityIcon = ({ type }) => {
   switch (type) {
@@ -39,7 +41,9 @@ const ReviewsPage = () => {
   const {
     repos,
     selectedRepo,
-    reviews,
+    reviewsByRepoId,
+    reviewsPageByRepoId,
+    hasMoreReviewsByRepoId,
     selectedReview,
     isLoadingRepos,
     isLoadingReviews,
@@ -57,15 +61,34 @@ const ReviewsPage = () => {
     activities,
     isLoadingDashboard,
     fetchDashboard,
-    reviewsPage,
-    hasMoreReviews,
     loadReviews,
   } = useReviewStore();
 
+  const repoKey = selectedRepo ? `${selectedRepo.owner}/${selectedRepo.name}` : null;
+  const reviews = repoKey ? (reviewsByRepoId[repoKey] || []) : [];
+  const reviewsPage = repoKey ? (reviewsPageByRepoId[repoKey] || 1) : 1;
+  const hasMoreReviews = repoKey ? (hasMoreReviewsByRepoId[repoKey] || false) : false;
+
   const [searchParams, setSearchParams] = useSearchParams();
   const [searchQuery, setSearchQuery] = useState("");
+  const debouncedSearchQuery = useDebounce(searchQuery, 300);
+
   const [prSearchQuery, setPrSearchQuery] = useState("");
+  const debouncedPrSearchQuery = useDebounce(prSearchQuery, 300);
+  
   const [statusFilter, setStatusFilter] = useState("All");
+
+  const [sentinelRef, isIntersecting] = useIntersectionObserver({ threshold: 0.1 });
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+
+  useEffect(() => {
+    if (isIntersecting && hasMoreReviews && !isLoadingReviews && !isLoadingMore && repoKey) {
+      setIsLoadingMore(true);
+      loadReviews(repoKey, reviewsPage + 1).finally(() => {
+        setIsLoadingMore(false);
+      });
+    }
+  }, [isIntersecting, hasMoreReviews, isLoadingReviews, isLoadingMore, loadReviews, repoKey, reviewsPage]);
 
   const handleActivityClick = (act) => {
     if (act.repoId) {
@@ -84,12 +107,14 @@ const ReviewsPage = () => {
 
   useEffect(() => {
     loadRepos();
-    connectSocket();
+    if (authUser?._id) {
+      connectSocket(authUser._id);
+    }
     fetchIndexingStatus();
     fetchDashboard();
     
     return () => disconnectSocket();
-  }, []);
+  }, [authUser]);
 
   useEffect(() => {
     const qRepoId = searchParams.get("repoId");
@@ -108,8 +133,8 @@ const ReviewsPage = () => {
   }, [searchParams, repos, selectRepo, loadReviewDetail, setSearchParams]);
 
   const filteredRepos = repos.filter(repo => 
-    repo.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    repo.owner.toLowerCase().includes(searchQuery.toLowerCase())
+    repo.name.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) ||
+    repo.owner.toLowerCase().includes(debouncedSearchQuery.toLowerCase())
   );
 
   const navItems = [
@@ -133,8 +158,8 @@ const ReviewsPage = () => {
 
   const getFilteredReviews = () => {
     let result = reviews;
-    if (prSearchQuery) {
-      const q = prSearchQuery.toLowerCase();
+    if (debouncedPrSearchQuery) {
+      const q = debouncedPrSearchQuery.toLowerCase();
       result = result.filter(r => 
         (r.prTitle && r.prTitle.toLowerCase().includes(q)) || 
         (r.prAuthor && r.prAuthor.name.toLowerCase().includes(q)) ||
@@ -367,7 +392,8 @@ const ReviewsPage = () => {
                   onSelect={loadReviewDetail}
                   isLoading={isLoadingReviews}
                   hasMore={hasMoreReviews}
-                  onLoadMore={() => loadReviews(reviewsPage + 1)}
+                  onLoadMore={() => loadReviews(repoKey, reviewsPage + 1)}
+                  observerRef={sentinelRef}
                 />
               </div>
             )}

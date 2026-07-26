@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { useChat } from "../store/useChatStore.js";
+import { useDebounce } from "../hooks/useDebounce.js";
 import {
   Plus,
   MessageSquare,
@@ -38,9 +39,10 @@ const ChatSidebar = ({ isOpen, onClose }) => {
   const [deletingId, setDeletingId] = useState(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const debouncedSearchTerm = useDebounce(searchTerm, 300);
 
   const filteredSessions = sessions.filter(session => 
-    (session.title || "Untitled Chat").toLowerCase().includes(searchTerm.toLowerCase())
+    (session.title || "Untitled Chat").toLowerCase().includes(debouncedSearchTerm.toLowerCase())
   );
 
   const handleDelete = async (e, conversationId) => {

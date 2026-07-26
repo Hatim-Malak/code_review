@@ -36,7 +36,7 @@ const timeAgo = (dateString) => {
   return `${Math.floor(months / 12)}y ago`;
 };
 
-const ReviewList = ({ reviews, onSelect, isLoading, hasMore, onLoadMore }) => {
+const ReviewList = ({ reviews, onSelect, isLoading, hasMore, onLoadMore, observerRef }) => {
   if (isLoading && reviews.length === 0) {
     return <SkeletonReviewList />;
   }
@@ -112,13 +112,19 @@ const ReviewList = ({ reviews, onSelect, isLoading, hasMore, onLoadMore }) => {
       ))}
       
       {hasMore && reviews.length > 0 && (
-        <button
-          onClick={onLoadMore}
-          disabled={isLoading}
-          className="mt-4 p-3 w-full bg-greenDark/5 hover:bg-greenDark/10 text-greenDark/80 font-bold rounded-xl transition-colors disabled:opacity-50"
+        <div 
+          ref={observerRef} 
+          className="mt-4 p-4 w-full flex justify-center items-center text-greenDark/60 font-bold text-sm"
         >
-          {isLoading ? "Loading..." : "Load More"}
-        </button>
+          {isLoading ? (
+            <div className="flex items-center gap-2">
+              <div className="w-4 h-4 border-2 border-greenDark/20 border-t-greenDark rounded-full animate-spin"></div>
+              <span>Loading more reviews...</span>
+            </div>
+          ) : (
+            <span>Scroll for more</span>
+          )}
+        </div>
       )}
     </div>
   );

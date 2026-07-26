@@ -229,6 +229,7 @@ def _rerank(query: str, candidates: list[dict], top_n: int = 3) -> list[dict]:
             documents=[item["text"] for item in candidates],
             top_n=len(candidates),  # score everything, we trim to top_n ourselves below
             return_documents=False,
+            parameters={"truncate": "END"}
         )
         for r in results.data:
             candidates[r.index]["rerank_score"] = r.score
