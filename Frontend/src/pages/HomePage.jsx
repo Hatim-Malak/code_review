@@ -232,23 +232,20 @@ const HomePage = () => {
           <ShowcaseRow
             reverse
             eyebrow="Codebase Chat"
-            title="Ask your codebase questions in plain English."
-            description="No more grepping through unfamiliar files. HatMind indexes your repository with RAG, so answers are grounded in the code that actually exists — with citations."
-            points={["Answers cite the exact file and line", "Understands cross-service architecture", "Works on any repo the moment it's connected"]}
+            title="Ask your repository questions in plain English."
+            description="HatMind indexes your connected GitHub repositories, allowing your team to ask deep questions about code structure, PR issues, and dependencies in isolated, repo-scoped threads."
+            points={["Strict 1:1 repository-scoped chat history", "Understands cross-service architecture & PR issues", "Grounded strictly in your project's codebase"]}
             visual={
-              <WindowPanel label="chat — hatmind">
+              <WindowPanel label="chat — hatmind (acme/payments-api)">
                 <div className="space-y-4 text-sm">
                   <div className="flex justify-end">
                     <div className="max-w-[85%] rounded-2xl rounded-tr-sm bg-white/10 px-4 py-2.5 text-gray-200">
-                      How does checkout handle refunds?
+                      How does the auth middleware validate JWT tokens?
                     </div>
                   </div>
                   <div className="flex justify-start">
                     <div className="max-w-[90%] rounded-2xl rounded-tl-sm bg-greenDark/40 px-4 py-2.5 text-gray-200 leading-relaxed">
-                      Refunds run through <code className="text-greenLight font-mono text-xs">process_refund()</code>, which calls Stripe's Refund API and marks the order <code className="text-greenLight font-mono text-xs">REFUNDED</code>.
-                      <div className="mt-2">
-                        <span className="text-[10px] font-mono bg-white/5 px-2 py-0.5 rounded text-gray-400">checkout/refunds.py:42</span>
-                      </div>
+                      Authentication is handled in <code className="text-greenLight font-mono text-xs">auth.middleware.js</code>. Incoming HTTP requests pass through <code className="text-greenLight font-mono text-xs">protectRoute()</code>, which verifies the <code className="text-greenLight font-mono text-xs">jwt</code> cookie using your secret key and attaches the user document to the request object.
                     </div>
                   </div>
                 </div>

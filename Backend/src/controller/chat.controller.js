@@ -43,7 +43,6 @@ export const addChat = async (req, res, next) => {
             return res.status(200).json({
                 response: `**${repo.owner}/${repo.name}** hasn't finished indexing yet — please wait a moment and try again.`,
                 conversationId: converId || null,
-                rag_sources: [],
             });
         }
         
@@ -85,7 +84,6 @@ export const addChat = async (req, res, next) => {
         if (!response.data) {
             return res.status(500).json({ message: "Internal server error" });
         }
-        const ragSources = response.data.rag_sources;
         // Auto-generate title from first message (truncate to 50 chars)
         const title = isNewConversation 
             ? query.length > 50 ? query.slice(0, 50) + "..." : query
@@ -98,7 +96,6 @@ export const addChat = async (req, res, next) => {
             user_message: query,
             AI_message: response.data.response,
             ...(title && { title }),
-            rag_sources:ragSources
         });
 
         await chat.save();
@@ -107,14 +104,12 @@ export const addChat = async (req, res, next) => {
         io.to(userId.toString()).emit("aiMessage", { 
             userMessage: query, 
             aiMessage: response.data.response,
-            rag_sources: ragSources
         });
 
         res.status(200).json({ 
             response: response.data.response, 
             conversationId: converId,
             ...(title && { title }),
-            rag_sources: ragSources
         });
     } catch (error) {
         next(error);

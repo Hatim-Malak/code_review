@@ -437,9 +437,7 @@ def aiBot(data: AIQuery):
 
     result = agent.invoke(initial_state)
 
-    return {"response": result.get("result", "An error occurred."),
-            "rag_sources": result.get("rag_sources", [])
-            }
+    return {"response": result.get("result", "An error occurred.")}
 
 class RepoFile(BaseModel):
     path: str
