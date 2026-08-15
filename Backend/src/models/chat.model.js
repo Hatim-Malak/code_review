@@ -6,6 +6,11 @@ const chatSchema = new mongoose.Schema(
             type:mongoose.Schema.Types.ObjectId,
             required:true,
         },
+        repoId:{
+            type:mongoose.Schema.Types.ObjectId,
+            ref:"Repo",
+            required:true,
+        },
         conversationId:{
             type:String,
             required:true
@@ -29,6 +34,7 @@ const chatSchema = new mongoose.Schema(
 
 chatSchema.index({ userId: 1, conversationId: 1, createdAt: 1 });
 chatSchema.index({ userId: 1, createdAt: 1 });
+chatSchema.index({ userId: 1, repoId: 1, createdAt: -1 });
 
 const Chat = mongoose.model("Chat",chatSchema)
 export default Chat

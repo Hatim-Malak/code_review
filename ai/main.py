@@ -10,7 +10,6 @@ import time
 from langgraph.graph import END, START, StateGraph
 from typing import Literal, List, Dict, Any
 from langchain_groq import ChatGroq
-from langchain_tavily import TavilySearch
 from langchain_core.messages import HumanMessage, SystemMessage
 from pinecone import Pinecone, ServerlessSpec
 from langchain_core.tools import tool
@@ -66,7 +65,7 @@ embeddings = HuggingFaceEndpointEmbeddings(
     task="feature-extraction",
     huggingfacehub_api_token=os.getenv("HF_TOKEN")
 )
-tavily = TavilySearch(max_results=3, topic='general')
+
 
 def _embed_with_retry(func, *args, retries=5, backoff=2, **kwargs):
     for attempt in range(retries):
@@ -84,6 +83,8 @@ class AIQuery(BaseModel):
     model_name: str
     context: list[str]
     thread_id: str
+    namespace: str
+    repo_full_name: str
 
 
 class RouteDecision(BaseModel):
@@ -97,17 +98,15 @@ class RouteDecision(BaseModel):
     )
 
 
-class RagJudge(BaseModel):
-    sufficient: bool = Field(
+class CheckRepoRelevance(BaseModel):
+    isRepoRelated: bool = Field(
         ...,
-        description="True only if the retrieved text, taken alone and with no outside knowledge, fully and directly answers the question. False if the retrieved text is empty, off-topic, partial, or ambiguous."
-    )
-
-
-class CheckLanguage(BaseModel):
-    isPython: bool = Field(
-        ...,
-        description="True if the query concerns the Python language, its standard library, or a Python-ecosystem framework/tool (e.g. Django, FastAPI, Pandas, NumPy). False for greetings, small talk, or topics unrelated to Python."
+        description=(
+            "True if the query is about the user's codebase, repository, code structure, "
+            "bugs, features, architecture, dependencies, or is a follow-up to a prior "
+            "codebase discussion. False for general programming tutorials, unrelated topics, "
+            "or questions that have nothing to do with the repository."
+        )
     )
 
 
@@ -123,17 +122,17 @@ class AgentState(TypedDict, total=False):
     route: Literal["rag", "answer", "end"]
     conversational_summary: str
     rag: str
-    web: str
-    isPython: bool
+    isRepoRelated: bool
     result: str
     rag_sources: list[str]
     context_str: str
+    namespace: str
+    repo_full_name: str
 
 
 GROUNDING_RULE = (
     "Never invent facts, APIs, function or class names, parameters, or numbers that are not present "
-    "in the given context or in verified, well-established Python knowledge. If you are not certain, "
-    "say so explicitly instead of guessing."
+    "in the given context. If you are not certain, say so explicitly instead of guessing."
 )
 
 
@@ -147,7 +146,7 @@ def _safe_structured_invoke(llm, messages, fallback, node_name: str = "llm_call"
     logger.warning(f"[{node_name}_warning] all {retries} attempts failed, using fallback")
     return fallback
 
-multiquery_llm = ChatGroq(model="llama-3.1-8b-instant", temperature=0.3).with_structured_output(MultiQueries, method="json_mode")
+multiquery_llm = ChatGroq(model="llama-3.1-8b-instant", temperature=0.3).with_structured_output(MultiQueries)
 
 
 def _generate_multi_queries(query: str) -> list[str]:
@@ -158,29 +157,13 @@ def _generate_multi_queries(query: str) -> list[str]:
             "Given a user query, produce exactly 3 alternative phrasings that use different technical "
             "terms or synonyms a developer or the documentation might use, while preserving the original "
             "meaning. Do not answer the query and do not add details it does not imply.\n"
-            "CRITICAL: You MUST use the provided tool/function to structure your output. Do not respond with plain text."
+            "CRITICAL: You MUST call the provided function to structure your output. Do not respond with plain text."
         )),
         HumanMessage(content=f"Query: {query}")
     ]
     fallback = MultiQueries(queries=[])
     result = _safe_structured_invoke(multiquery_llm, messages, fallback, "multiquery")
     return list(dict.fromkeys([query] + result.queries))
-
-
-def web_search_tool(query: str) -> str:
-    """up-to-date information via tavily"""
-    try:
-        result = tavily.invoke({"query": query})
-        if isinstance(result, dict) and 'results' in result:
-            formatted_results = [
-                f"title: {item.get('title', 'No title')} \n Content: {item.get('content', 'No content')} \n url: {item.get('url', '')}"
-                for item in result['results']
-            ]
-            return "\n\n".join(formatted_results) if formatted_results else "No result found"
-        return str(result)
-    except Exception as e:
-        logger.error(f"error in web_search_tool {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 def _rag_candidates(query: str, source_filter: str = None, namespace: str = None) -> Dict[str, Dict[str, Any]]:
@@ -271,59 +254,62 @@ def build_agent_graph(model_name: str):
     """
     Initializes LLMs and compiles the LangGraph based on the requested model.
     """
-    router_llm = ChatGroq(model=model_name, temperature=0).with_structured_output(RouteDecision, method="json_mode")
-    judge_llm = ChatGroq(model=model_name, temperature=0).with_structured_output(RagJudge, method="json_mode")
+    router_llm = ChatGroq(model=model_name, temperature=0).with_structured_output(RouteDecision)
     answer_llm = ChatGroq(model=model_name, temperature=0.2, max_tokens=1024)
-    language_checking_llm = ChatGroq(model=model_name, temperature=0).with_structured_output(CheckLanguage, method="json_mode")
+    relevance_checking_llm = ChatGroq(model=model_name, temperature=0).with_structured_output(CheckRepoRelevance)
     fast_llm = ChatGroq(model="llama-3.1-8b-instant", temperature=0)
 
-    def language_checking_node(state: AgentState) -> AgentState:
+    def relevance_checking_node(state: AgentState) -> AgentState:
         history_block = (
             f"\n\nConversation history (use ONLY to disambiguate a short, ambiguous follow-up; "
             f"never use it to justify a clearly new, unrelated topic):\n{state['conversational_summary']}"
             if state.get("conversational_summary") else ""
         )
+        repo_name = state.get("repo_full_name", "unknown")
         messages = [
             SystemMessage(content=(
-                "You are a strict binary classifier for a Python-only coding assistant.\n"
-                "Decide whether the CURRENT query is something a Python coding assistant should answer: "
-                "it concerns the Python programming language, its standard library, or a Python-ecosystem "
-                "framework/tool (e.g. Django, FastAPI, Pandas, NumPy, pytest) — OR it is a short, "
-                "self-incomplete follow-up (e.g. 'what about for CSV files?', 'can you show an example?') "
-                "that only makes sense in light of a prior Python discussion in the history.\n\n"
-                "If the current query introduces a new, self-contained topic unrelated to Python or "
-                "programming (general knowledge, geography, history, small talk, etc.), it is isPython: "
-                "false — even if the conversation history was about Python. Earlier Python discussion "
-                "never makes an unrelated new question Python-related.\n\n"
+                f"You are a strict binary classifier for a codebase assistant scoped to the repository '{repo_name}'.\n"
+                "Decide whether the CURRENT query is something this assistant should answer: "
+                "it asks about the repository's code, architecture, bugs, dependencies, deployment, "
+                "testing, or any technical aspect of this specific codebase — OR it is a short, "
+                "self-incomplete follow-up (e.g. 'what about the auth service?', 'can you show that function?') "
+                "that only makes sense in light of a prior codebase discussion in the history.\n\n"
+                "If the current query introduces a new, self-contained topic unrelated to this repository "
+                "(general programming tutorials, language syntax questions, general knowledge, geography, "
+                "history, small talk, etc.), it is isRepoRelated: false — even if the conversation history "
+                "was about this repo. Earlier repo discussion never makes an unrelated new question repo-related.\n\n"
                 "Examples:\n"
-                "- History about pandas CSV parsing; query 'what about excel files?' -> true (follow-up)\n"
-                "- History about pandas CSV parsing; query 'do you know about the Himalayas?' -> false (new, unrelated topic)\n"
+                f"- History about {repo_name} auth flow; query 'what about the payment service?' -> true (follow-up)\n"
+                f"- History about {repo_name} auth flow; query 'how do I sort a list in Python?' -> false (general tutorial)\n"
                 "- No history; query 'hello' -> false\n"
-                "- No history; query 'how do I reverse a list?' -> true\n"
-                "CRITICAL: You MUST use the provided tool/function to structure your output. Do not respond with plain text."
+                f"- No history; query 'explain the folder structure' -> true (about the repo)\n"
+                "CRITICAL: You MUST call the provided function to structure your output. Do not respond with plain text."
             )),
             HumanMessage(content=f"Current query: {state['query']}{history_block}")
         ]
-        fallback = CheckLanguage(isPython=True)
-        verdict = _safe_structured_invoke(language_checking_llm, messages, fallback, "language_check")
-        return {"isPython": verdict.isPython, "route": "answer"}
+        fallback = CheckRepoRelevance(isRepoRelated=True)
+        verdict = _safe_structured_invoke(relevance_checking_llm, messages, fallback, "relevance_check")
+        return {"isRepoRelated": verdict.isRepoRelated, "route": "answer"}
 
     def router_node(state: AgentState) -> AgentState:
-        if not state.get("isPython", True):
-            return {"result": "Sorry, I only answer Python questions.", "route": "end"}
+        if not state.get("isRepoRelated", True):
+            repo = state.get("repo_full_name", "your repository")
+            return {
+                "result": f"I can only answer questions about **{repo}**. "
+                          "Please ask something related to this codebase.",
+                "route": "end"
+            }
 
         messages = [
             SystemMessage(content=(
-                "You are the routing agent for a Python-only AI assistant. The query has already been "
-                "confirmed to be Python-related — do not re-evaluate that. Choose exactly ONE route:\n\n"
-                "- 'rag' (default/primary): any 'how to' request, debugging help, library usage "
-                "(Pandas, Django, FastAPI, etc.), project structure, or code generation. If uncertain, "
-                "choose 'rag'.\n"
-                "- 'answer': ONLY for basic conceptual definitions needing no code at all "
-                "(e.g. 'what is a variable?', 'define OOP').\n"
+                "You are the routing agent for a repository-scoped codebase assistant. The query has already "
+                "been confirmed to be about this repository — do not re-evaluate that. Choose exactly ONE route:\n\n"
+                "- 'rag' (default/primary): any question about the codebase, architecture, specific files, "
+                "bugs, how something works, or debugging help. If uncertain, choose 'rag'.\n"
+                "- 'answer': ONLY for very simple meta questions about the assistant itself.\n"
                 "- 'end': ONLY for pure pleasantries ('hello', 'thanks'). Must include a short 'reply'.\n\n"
                 "Set 'reply' to null unless route is 'end'. Do not add any field beyond route and reply.\n"
-                "CRITICAL: You MUST use the provided tool/function to structure your output. Do not respond with plain text."
+                "CRITICAL: You MUST call the provided function to structure your output. Do not respond with plain text."
             )),
             HumanMessage(content=state["query"])
         ]
@@ -335,35 +321,18 @@ def build_agent_graph(model_name: str):
         return {"route": result.route, "result": ""}
 
     def rag_node(state: AgentState) -> AgentState:
-        docs = rag_search_tool(state["query"]) if state['route'] == 'rag' else []
+        docs = rag_search_tool(
+            state["query"],
+            namespace=state.get("namespace"),
+        ) if state['route'] == 'rag' else []
         chunks_str = "\n\n".join([d["content"] for d in docs]) if docs else ""
         sources = list(set([d["source"] for d in docs])) if docs else []
-
-        if not chunks_str:
-            return {"rag": "", "rag_sources": [], "route": "web"}
-
-        judge_message = [
-            SystemMessage(content=(
-                "You are a strict, evidence-only judge. Decide whether the 'Retrieved info' below — and "
-                "ONLY that text — is enough to fully and accurately answer the question. Do not use "
-                "outside knowledge and do not fill in missing details yourself. If the retrieved info is "
-                "partial, tangential, or ambiguous, mark it insufficient.\n"
-                "CRITICAL: You MUST use the provided tool/function to structure your output. Do not respond with plain text."
-            )),
-            HumanMessage(content=f"Question: {state['query']}\n\nRetrieved info:\n{chunks_str}")
-        ]
-        fallback = RagJudge(sufficient=False)
-        verdict = _safe_structured_invoke(judge_llm, judge_message, fallback, "judge")
 
         return {
             "rag": chunks_str,
             "rag_sources": sources,
-            "route": "answer" if verdict.sufficient else "web"
+            "route": "answer",
         }
-
-    def web_node(state: AgentState) -> AgentState:
-        snippet = web_search_tool(state["query"])
-        return {"web": snippet, "route": "answer"}
 
     def summarizeHistory(state: AgentState) -> AgentState:
         ctx = state.get("context_str", "")
@@ -401,27 +370,22 @@ def build_agent_graph(model_name: str):
             return {"conversational_summary": ""}
 
     def answer_node(state: AgentState) -> AgentState:
-        if not state.get("isPython", True):
-            return {"result": "Sorry, I only answer Python questions."}
-
+        repo = state.get("repo_full_name", "unknown")
         ctx_part = []
         if state.get("rag"):
-            ctx_part.append("Knowledge Base:\n" + state["rag"])
-        if state.get("web"):
-            ctx_part.append("Web Results:\n" + state["web"])
+            ctx_part.append("Repository Code Context:\n" + state["rag"])
         if state.get("conversational_summary"):
             ctx_part.append("Prior Conversation:\n" + state["conversational_summary"])
-        context = "\n\n".join(ctx_part) if ctx_part else "No supporting context was retrieved."
+        context = "\n\n".join(ctx_part) if ctx_part else "No supporting context was retrieved from the repository."
 
         messages = [
             SystemMessage(content=(
-                "You are a precise Python coding assistant. Only answer questions about Python, its "
-                "standard library, or Python-ecosystem frameworks/tools. If the question is clearly about "
-                "an unrelated topic (general knowledge, geography, history, etc.), reply exactly: "
-                "\"Sorry, I only answer Python questions.\" and nothing else — regardless of what the "
-                "provided context contains. Otherwise, prefer the provided context when it is relevant. "
-                f"{GROUNDING_RULE} If the context is missing or insufficient, answer from well-established "
-                "Python knowledge only, and say so if you're not fully certain."
+                f"You are a precise codebase assistant for the repository '{repo}'. "
+                "Only answer questions about this specific repository's code, architecture, "
+                "bugs, dependencies, and technical details. If the provided context does not "
+                "contain enough information to answer, say so honestly — do not guess or "
+                "fabricate code that isn't in the context. "
+                f"{GROUNDING_RULE}"
             )),
             HumanMessage(content=f"Question: {state['query']}\n\nContext:\n{context}")
         ]
@@ -432,19 +396,17 @@ def build_agent_graph(model_name: str):
         return "Yes" if state.get("context_str") else "No"
 
     g = StateGraph(AgentState)
-    g.add_node("check_language", language_checking_node)
+    g.add_node("check_relevance", relevance_checking_node)
     g.add_node("router", router_node)
-    g.add_node("web_search", web_node)
     g.add_node("rag_lookup", rag_node)
     g.add_node("answer", answer_node)
     g.add_node("summarize", summarizeHistory)
 
-    g.add_conditional_edges(START, check_summary_needed, {"No": "check_language", "Yes": "summarize"})
-    g.add_edge("summarize", "check_language")
-    g.add_edge("check_language", "router")
+    g.add_conditional_edges(START, check_summary_needed, {"No": "check_relevance", "Yes": "summarize"})
+    g.add_edge("summarize", "check_relevance")
+    g.add_edge("check_relevance", "router")
     g.add_conditional_edges("router", lambda s: s['route'], {"rag": "rag_lookup", "answer": "answer", "end": END})
-    g.add_conditional_edges("rag_lookup", lambda s: s['route'], {"answer": "answer", "web": "web_search"})
-    g.add_edge("web_search", "answer")
+    g.add_edge("rag_lookup", "answer")
     g.add_edge("answer", END)
 
     return g.compile()
@@ -468,7 +430,9 @@ def aiBot(data: AIQuery):
 
     initial_state = {
         "query": data.query,
-        "context_str": joined_context
+        "context_str": joined_context,
+        "namespace": data.namespace,
+        "repo_full_name": data.repo_full_name,
     }
 
     result = agent.invoke(initial_state)

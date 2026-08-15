@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { useChat } from "../store/useChatStore.js";
+import { useReviewStore } from "../store/useReviewStore.js";
 import { useDebounce } from "../hooks/useDebounce.js";
 import {
   Plus,
@@ -9,6 +10,8 @@ import {
   Clock,
   Sparkles,
   Search,
+  GitBranch,
+  ChevronDown,
 } from "lucide-react";
 
 const getRelativeTime = (dateStr) => {
@@ -34,7 +37,12 @@ const ChatSidebar = ({ isOpen, onClose }) => {
     selectSession,
     startNewChat,
     deleteSession,
+    selectedRepoId,
+    selectRepo,
   } = useChat();
+  const { repos } = useReviewStore();
+
+  const selectedRepoObj = repos.find(r => String(r._id) === String(selectedRepoId));
 
   const [deletingId, setDeletingId] = useState(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
@@ -111,12 +119,40 @@ const ChatSidebar = ({ isOpen, onClose }) => {
             </button>
           </div>
 
+          {/* Repository Selector */}
+          <div className="mb-4">
+            <label className="text-[11px] font-bold text-greenDark/50 uppercase tracking-wider mb-1.5 block">
+              Repository
+            </label>
+            <div className="relative">
+              <div className="absolute left-3 top-1/2 -translate-y-1/2 text-greenDark/40 pointer-events-none">
+                <GitBranch size={14} />
+              </div>
+              <select
+                value={selectedRepoId || ""}
+                onChange={(e) => selectRepo(e.target.value || null)}
+                className="w-full appearance-none bg-white border border-greenDark/10 text-greenDark text-[13px] font-semibold rounded-xl py-2.5 pl-9 pr-9 outline-none focus:border-greenLight/50 focus:shadow-sm transition-all cursor-pointer truncate"
+              >
+                <option value="">Select a repository…</option>
+                {repos.map((repo) => (
+                  <option key={repo._id} value={repo._id}>
+                    {repo.owner}/{repo.name}
+                  </option>
+                ))}
+              </select>
+              <div className="absolute right-3 top-1/2 -translate-y-1/2 text-greenDark/40 pointer-events-none">
+                <ChevronDown size={14} />
+              </div>
+            </div>
+          </div>
+
           {/* New Chat Button */}
           <button
             onClick={handleNewChat}
+            disabled={!selectedRepoId}
             className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl
-              bg-greenDark text-cream font-bold text-sm
-              hover:bg-greenLight
+              bg-greenDark text-cream font-bold text-sm disabled:opacity-40 disabled:cursor-not-allowed
+              hover:bg-greenLight disabled:hover:bg-greenDark
               shadow-md hover:shadow-lg
               transition-all duration-300
               group mb-4"

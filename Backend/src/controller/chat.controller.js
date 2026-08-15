@@ -1,4 +1,6 @@
 import Chat from "../models/chat.model.js";
+import Repo from "../models/repo.model.js";
+import Installation from "../models/installation.model.js";
 import mongoose from "mongoose";
 import axios from "axios";
 import { v4 as uuid4 } from "uuid";
@@ -8,7 +10,7 @@ export const addChat = async (req, res, next) => {
     try {
         const userId = req.user._id;
         
-        let { query, model_name, converId } = req.body;
+        let { query, model_name, converId, repoId } = req.body;
 
         if (!query) {
             return res.status(400).json({ message: "user query is required" });
@@ -16,12 +18,51 @@ export const addChat = async (req, res, next) => {
         if (!model_name) {
             return res.status(400).json({ message: "model_name is required" });
         }
+        if (!repoId) {
+            return res.status(400).json({ message: "repoId is required" });
+        }
+
+        // Validate repo exists
+        const repo = await Repo.findById(repoId);
+        if (!repo) {
+            return res.status(404).json({ message: "repository not found" });
+        }
+
+        // Validate user owns the installation
+        const installation = await Installation.findOne({
+            installationId: repo.installationId,
+            userId,
+        });
+        if (!installation) {
+            return res.status(403).json({ message: "you do not own this repository" });
+        }
+
+        // Early exit if repo hasn't been indexed yet — saves a wasted
+        // round-trip to Groq/Pinecone for a query guaranteed to return empty.
+        if (!repo.lastIndexedSha) {
+            return res.status(200).json({
+                response: `**${repo.owner}/${repo.name}** hasn't finished indexing yet — please wait a moment and try again.`,
+                conversationId: converId || null,
+                rag_sources: [],
+            });
+        }
         
         // If no converId, this is a new conversation — generate one and a title
         let isNewConversation = false;
         if (!converId) {
             converId = uuid4();
             isNewConversation = true;
+        }
+
+        // Enforce strict 1:1 conversation-repo binding.
+        // Without this, a stale converId from repo A sent alongside repoId B
+        // would silently corrupt the conversation — pulling repo A's context
+        // into a repo B query, and saving the message with a mismatched repoId.
+        if (!isNewConversation) {
+            const existingChat = await Chat.findOne({ conversationId: converId }).select("repoId");
+            if (existingChat && String(existingChat.repoId) !== String(repoId)) {
+                return res.status(400).json({ message: "this conversation belongs to a different repository" });
+            }
         }
 
         const rawContext = await Chat.find({ userId, conversationId: converId })
@@ -36,7 +77,9 @@ export const addChat = async (req, res, next) => {
             query,
             model_name,
             context,
-            thread_id: converId 
+            thread_id: converId,
+            namespace: repo.namespace,
+            repo_full_name: `${repo.owner}/${repo.name}`,
         });
 
         if (!response.data) {
@@ -50,6 +93,7 @@ export const addChat = async (req, res, next) => {
 
         const chat = new Chat({
             userId,
+            repoId,
             conversationId: converId,
             user_message: query,
             AI_message: response.data.response,
@@ -107,9 +151,15 @@ export const getHistory = async (req, res, next) => {
 export const getSessions = async (req, res, next) => {
     try {
         const userId = req.user._id;
+        const { repoId } = req.query;
+
+        const matchStage = { userId: new mongoose.Types.ObjectId(userId) };
+        if (repoId) {
+            matchStage.repoId = new mongoose.Types.ObjectId(repoId);
+        }
 
         const sessions = await Chat.aggregate([
-            { $match: { userId: new mongoose.Types.ObjectId(userId) } },
+            { $match: matchStage },
             { $sort: { createdAt: 1 } },
             {
                 $group: {

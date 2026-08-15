@@ -1,12 +1,14 @@
 import { useAuth } from "../store/useAuthStore.js";
 import { useMemo, useEffect, useRef, useState } from "react";
 import { useChat } from "../store/useChatStore.js";
+import { useReviewStore } from "../store/useReviewStore.js";
 import CustomNavbar from "../components/CustomNavbar.jsx";
 import ChatSidebar from "../components/ChatSidebar.jsx";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { AnimatedCodeBlock } from "../components/animated-code-block";
-import { User, Bot, Send, Code, Sparkles, Zap, ShieldAlert, PanelLeftOpen, Globe } from "lucide-react";
+import { User, Bot, Send, Sparkles, PanelLeftOpen, FolderGit2, ShieldAlert, Search, GitBranch } from "lucide-react";
+import { Link } from "react-router-dom";
 import { Helmet } from "react-helmet-async";
 
 const SuggestionCard = ({ icon: Icon, title, subtitle, onClick }) => (
@@ -26,8 +28,11 @@ const SuggestionCard = ({ icon: Icon, title, subtitle, onClick }) => (
 
 const ChatPage = () => {
   const { authUser, logout } = useAuth();
-  const { chats, sendMessage, connectSocket, loadSessions, isSending, isHistoryLoading } =
-    useChat();
+  const {
+    chats, sendMessage, connectSocket, loadSessions, isSending,
+    isHistoryLoading, selectedRepoId, selectRepo,
+  } = useChat();
+  const { repos, loadRepos, isLoadingRepos } = useReviewStore();
   const chatContainerRef = useRef(null);
   const messagesEndRef = useRef(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -59,9 +64,13 @@ const ChatPage = () => {
   useEffect(() => {
     if (authUser?._id) {
       connectSocket(authUser._id);
-      loadSessions();
+      loadRepos();
     }
   }, [authUser]);
+
+  useEffect(() => {
+    if (selectedRepoId) loadSessions();
+  }, [selectedRepoId]);
 
   const handleSend = (e) => {
     e.preventDefault();
@@ -134,42 +143,71 @@ const ChatPage = () => {
                   </div>
                   <p className="text-sm text-greenDark/60 font-bold tracking-wide animate-pulse">Loading conversation...</p>
                 </div>
+              ) : repos.length === 0 ? (
+                /* Tier 1: No repos connected at all */
+                <div className="flex-1 flex flex-col justify-center items-center mt-10 lg:mt-20 animation-fade-in">
+                  <div className="w-20 h-20 rounded-3xl bg-greenDark/5 flex justify-center items-center mb-6">
+                    <GitBranch size={36} className="text-greenDark/30" />
+                  </div>
+                  <h2 className="text-3xl lg:text-4xl font-black text-greenDark mb-3 tracking-tight">No repositories connected</h2>
+                  <p className="text-lg text-greenDark/70 mb-8 text-center max-w-lg">
+                    Connect a GitHub repository in Settings to start chatting with your codebase.
+                  </p>
+                  <Link
+                    to="/settings"
+                    className="px-8 py-4 bg-greenDark hover:bg-greenLight text-cream rounded-xl font-bold text-base transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5 flex items-center gap-2"
+                  >
+                    Go to Settings
+                  </Link>
+                </div>
+              ) : !selectedRepoId ? (
+                /* Tier 2: Repos exist but none selected */
+                <div className="flex-1 flex flex-col justify-center items-center mt-10 lg:mt-20 animation-fade-in">
+                  <div className="w-20 h-20 rounded-3xl bg-greenDark/5 flex justify-center items-center mb-6">
+                    <Search size={36} className="text-greenDark/30" />
+                  </div>
+                  <h2 className="text-3xl lg:text-4xl font-black text-greenDark mb-3 tracking-tight">Select a repository</h2>
+                  <p className="text-lg text-greenDark/70 text-center max-w-lg">
+                    Choose a repository from the sidebar to start asking questions about your codebase.
+                  </p>
+                </div>
               ) : chats.length === 0 ? (
+                /* Tier 3: Repo selected, no messages yet — show repo-specific suggestions */
                 <div className="flex-1 flex flex-col justify-center items-center mt-10 lg:mt-20 animation-fade-in">
                   <img 
                     src="./HatMind.jpg" 
                     alt="Logo" 
                     className="h-24 w-auto rounded-3xl shadow-xl mb-6 object-contain" 
                   />
-                  <h2 className="text-3xl lg:text-4xl font-black text-greenDark mb-3 tracking-tight">How can I help you code today?</h2>
+                  <h2 className="text-3xl lg:text-4xl font-black text-greenDark mb-3 tracking-tight">Ask about your codebase</h2>
                   <p className="text-lg text-greenDark/70 mb-12 text-center max-w-lg">
-                    Paste your Python script below, or try one of these suggestions to get started.
+                    Ask any question about this repository, or try one of these to get started.
                   </p>
                   
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full max-w-2xl px-4">
                     <SuggestionCard 
-                      icon={Code} 
-                      title="Code Review" 
-                      subtitle="Analyze my script for best practices"
-                      onClick={() => sendSuggestion("Please review my Python code for best practices and readability.")}
-                    />
-                    <SuggestionCard 
-                      icon={Zap} 
-                      title="Optimize Performance" 
-                      subtitle="Make my algorithms run faster"
-                      onClick={() => sendSuggestion("How can I optimize my Python code to run faster and use less memory?")}
+                      icon={FolderGit2} 
+                      title="Architecture" 
+                      subtitle="Explain how services connect"
+                      onClick={() => sendSuggestion("Explain the overall architecture of this repository.")}
                     />
                     <SuggestionCard 
                       icon={ShieldAlert} 
                       title="Find Bugs" 
-                      subtitle="Locate logical errors or exceptions"
-                      onClick={() => sendSuggestion("Can you help me find bugs or potential edge cases in my code?")}
+                      subtitle="Spot potential issues in the code"
+                      onClick={() => sendSuggestion("Are there any potential bugs or edge cases in this codebase?")}
+                    />
+                    <SuggestionCard 
+                      icon={Search} 
+                      title="How It Works" 
+                      subtitle="Trace a feature end to end"
+                      onClick={() => sendSuggestion("How does the authentication flow work in this repository?")}
                     />
                     <SuggestionCard 
                       icon={Sparkles} 
-                      title="Refactor Logic" 
-                      subtitle="Rewrite for modern Python (PEP 8)"
-                      onClick={() => sendSuggestion("Help me refactor my code to follow PEP 8 and modern Python conventions.")}
+                      title="Improvements" 
+                      subtitle="Suggest refactors and optimizations"
+                      onClick={() => sendSuggestion("What improvements or refactors would you suggest for this codebase?")}
                     />
                   </div>
                 </div>
@@ -232,36 +270,7 @@ const ChatPage = () => {
                         )}
                       </div>
 
-                      {/* RAG Sources Metadata */}
-                      {chat.rag_sources && chat.rag_sources.length > 0 && (
-                        <div className="mt-2 pt-3 border-t border-greenDark/10 flex flex-col gap-2 animation-fade-in">
-                          <span className="text-xs font-bold text-greenDark/70 uppercase tracking-wider flex items-center gap-1">
-                            <Globe size={12} className="text-greenLight" />
-                            Sources Utilized
-                          </span>
-                          <div className="flex flex-wrap gap-2">
-                            {chat.rag_sources.map((sourceUrl, idx) => (
-                              <a 
-                                key={idx} 
-                                href={sourceUrl} 
-                                target="_blank" 
-                                rel="noopener noreferrer"
-                                className="text-xs text-greenDark bg-greenLight/10 hover:bg-greenLight/20 px-2.5 py-1.5 rounded-lg border border-greenDark/10 transition-colors truncate max-w-[250px] font-medium flex items-center gap-1"
-                                title={sourceUrl}
-                              >
-                                {(() => {
-                                  try {
-                                    return new URL(sourceUrl).hostname.replace('www.', '');
-                                  } catch (e) {
-                                    const filename = sourceUrl.split(/[/\\]/).pop() || sourceUrl;
-                                    return filename.length > 30 ? filename.slice(0, 30) + "..." : filename;
-                                  }
-                                })()}
-                              </a>
-                            ))}
-                          </div>
-                        </div>
-                      )}
+
                     </div>
                   </div>
                 </div>
@@ -280,8 +289,9 @@ const ChatPage = () => {
                 name="message"
                 autoComplete="off"
                 rows="1"
-                placeholder="Message HatMind or paste code..."
-                className="flex-1 bg-transparent py-3 px-4 placeholder:text-greenDark/40 text-[15px] text-greenDark font-medium outline-none resize-none min-h-[44px] max-h-32 scrollable"
+                placeholder={selectedRepoId ? "Ask about this repository..." : "Select a repository to start chatting..."}
+                disabled={!selectedRepoId}
+                className="flex-1 bg-transparent py-3 px-4 placeholder:text-greenDark/40 text-[15px] text-greenDark font-medium outline-none resize-none min-h-[44px] max-h-32 scrollable disabled:cursor-not-allowed disabled:opacity-50"
                 onInput={(e) => {
                   e.target.style.height = "auto";
                   e.target.style.height = e.target.scrollHeight + "px";
@@ -290,14 +300,14 @@ const ChatPage = () => {
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
                     const form = e.target.closest('form');
-                    if (e.target.value.trim() && !isSending) {
+                    if (e.target.value.trim() && !isSending && selectedRepoId) {
                       form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
                     }
                   }
                 }}
               />
               <button
-                disabled={isSending}
+                disabled={isSending || !selectedRepoId}
                 type="submit"
                 className="bg-greenDark hover:bg-greenLight disabled:bg-creamDark disabled:text-greenDark/50 text-cream w-10 h-10 rounded-2xl flex justify-center items-center transition-all shadow-sm flex-shrink-0 mb-1 mr-1"
               >

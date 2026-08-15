@@ -12,6 +12,7 @@ export const useChat = create((set, get) => ({
   // Session management state
   sessions: [],
   activeSessionId: null,
+  selectedRepoId: null,
   isLoadingSessions: false,
   isHistoryLoading: false,
 
@@ -70,9 +71,11 @@ export const useChat = create((set, get) => ({
 
   // Load all conversation sessions for the sidebar
   loadSessions: async () => {
+    const { selectedRepoId } = get();
+    if (!selectedRepoId) return set({ sessions: [] });
     try {
       set({ isLoadingSessions: true });
-      const res = await axiosInstance.get("/chat/sessions");
+      const res = await axiosInstance.get(`/chat/sessions?repoId=${selectedRepoId}`);
       if (res.data) set({ sessions: res.data });
     } catch (error) {
       console.error("Error loading sessions:", error);
@@ -100,6 +103,7 @@ export const useChat = create((set, get) => ({
   // Start a fresh conversation
   startNewChat: () => {
     set({ activeSessionId: null, chats: [] });
+    // selectedRepoId is intentionally preserved — new chat stays in the same repo
   },
 
   // Delete a session
@@ -121,8 +125,9 @@ export const useChat = create((set, get) => ({
   },
 
   sendMessage: async (query, model_name = "llama-3.1-8b-instant") => {
-    const { chats, activeSessionId } = get();
+    const { chats, activeSessionId, selectedRepoId } = get();
     if (!query.trim()) return toast.error("Please enter a message");
+    if (!selectedRepoId) return toast.error("Please select a repository first");
 
     try {
       set({ isSending: true });
@@ -134,6 +139,7 @@ export const useChat = create((set, get) => ({
         query,
         model_name,
         converId: activeSessionId,
+        repoId: selectedRepoId,
       });
 
       // If this was a new conversation, store the returned conversationId
@@ -162,5 +168,10 @@ export const useChat = create((set, get) => ({
       console.error("Error loading history:", error);
       toast.error(error.response?.data?.message || "Failed to load chat history");
     }
+  },
+
+  selectRepo: (repoId) => {
+    set({ selectedRepoId: repoId, activeSessionId: null, chats: [], sessions: [] });
+    get().loadSessions();
   },
 }));
