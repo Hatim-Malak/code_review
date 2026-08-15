@@ -110,6 +110,10 @@ export const handleWbhook = async (req, res, next) => {
       }
 
       case "pull_request": {
+        if (payload.action === "closed") {
+          // A PR was closed or merged. We ignore this safely so it doesn't overwrite our manual 'merged' status or spam the logs.
+          break;
+        }
         if (!["opened", "synchronize", "reopened"].includes(payload.action)) {
           logger.info(`[Webhook] Ignored PR action: ${payload.action}`);
           break;

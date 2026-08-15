@@ -373,3 +373,60 @@ export async function fullyUninstall(req, res, next) {
     next(error);
   }
 }
+
+export const mergePR = async (req, res, next) => {
+  try {
+    const { owner, repo: repoName, number } = req.params;
+    const { override } = req.body;
+    const prNumber = parseInt(number);
+
+    const repo = await Repo.findOne({ owner, name: repoName });
+    if (!repo) return res.status(404).json({ message: "repo not found" });
+
+    if (String(repo.claimedByUserId) !== String(req.user._id)) {
+      return res.status(403).json({ message: "only the claiming user can merge this repo's PRs" });
+    }
+
+    const review = await Review.findOne({ repoId: repo._id, prNumber });
+    if (!review) return res.status(404).json({ message: "review not found" });
+
+    if (!override) {
+      if (review.status !== "completed") {
+        return res.status(409).json({ message: "Cannot merge — review has not completed successfully" });
+      }
+      const unresolvedErrors = review.findings.filter(f => f.severity === "error" && !f.resolved);
+      if (unresolvedErrors.length > 0) {
+        return res.status(409).json({ message: `Cannot merge — ${unresolvedErrors.length} unresolved error(s)` });
+      }
+    }
+
+    const octokit = await octokitForInstallation(repo.installationId);
+    try {
+      await octokit.rest.pulls.merge({
+        owner,
+        repo: repoName,
+        pull_number: prNumber,
+        merge_method: 'squash'
+      });
+    } catch (githubError) {
+      if (githubError.status === 403) {
+         return res.status(403).json({ message: "GitHub permissions error: The HatMind GitHub App does not have 'Contents: Read and write' permissions, or the repo owner has not re-consented." });
+      }
+      return res.status(githubError.status || 500).json({ message: `GitHub API error: ${githubError.message}` });
+    }
+
+    review.status = "merged";
+    await review.save();
+
+    await Activity.create({ 
+      type: "pr_merged", 
+      repoId: repo._id, 
+      prNumber, 
+      message: `PR #${prNumber} merged via HatMind` 
+    });
+
+    res.status(200).json({ message: "PR merged successfully" });
+  } catch (error) {
+    next(error);
+  }
+}

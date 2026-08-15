@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ArrowLeft, ShieldCheck, Loader2, AlertCircle, RefreshCw, ChevronUp, ChevronDown, FileCode2 } from "lucide-react";
+import { ArrowLeft, ShieldCheck, Loader2, AlertCircle, RefreshCw, ChevronUp, ChevronDown, FileCode2, GitMerge } from "lucide-react";
 import StatusBadge from "./StatusBadge.jsx";
 import FindingCard from "./FindingCard.jsx";
 import { getDisplayStatus } from "../utils/statusLogic.js";
@@ -53,6 +53,9 @@ const FileFindingsGroup = ({ file, findings, toggleFindingResolve }) => {
 const ReviewDetail = ({ review, onBack, isLoading }) => {
   const toggleFindingResolve = useReviewStore(state => state.toggleFindingResolve);
   const reRunReview = useReviewStore(state => state.reRunReview);
+  const mergePR = useReviewStore(state => state.mergePR);
+  const isMergingPR = useReviewStore(state => state.isMergingPR);
+  const [showMergeModal, setShowMergeModal] = useState(false);
 
   if (isLoading) {
     return <SkeletonReviewDetail />;
@@ -68,6 +71,8 @@ const ReviewDetail = ({ review, onBack, isLoading }) => {
     acc[finding.file].push(finding);
     return acc;
   }, {}) || {};
+
+  const hasUnresolvedErrors = review?.findings?.some(f => f.severity === 'error' && !f.resolved);
 
   return (
     <div className="flex flex-col gap-6">
@@ -100,7 +105,19 @@ const ReviewDetail = ({ review, onBack, isLoading }) => {
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-greenDark/10 bg-white hover:bg-greenDark/5 text-greenDark/70 hover:text-greenDark text-xs font-bold transition-colors"
             >
               <RefreshCw size={14} />
-              Re-run Review
+              Re-run
+            </button>
+          )}
+          {review.status !== 'merged' && (
+            <button
+              onClick={() => setShowMergeModal(true)}
+              disabled={isMergingPR}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold transition-colors ${
+                isMergingPR ? 'bg-gray-100 text-gray-400 cursor-not-allowed border-gray-200' : 'border-greenDark/10 bg-white hover:bg-greenLight/20 text-greenDark hover:text-greenDark shadow-sm'
+              }`}
+            >
+              {isMergingPR ? <Loader2 size={14} className="animate-spin" /> : <GitMerge size={14} />}
+              Merge PR
             </button>
           )}
           <StatusBadge status={displayStatus} />
@@ -158,6 +175,46 @@ const ReviewDetail = ({ review, onBack, isLoading }) => {
           ))
         )}
       </div>
+      
+      {showMergeModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-greenDark/20 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-white p-6 rounded-3xl shadow-2xl max-w-sm w-full border border-greenDark/10 transform scale-100 animate-in zoom-in-95 duration-200">
+            <h3 className="text-xl font-black text-greenDark mb-3 flex items-center gap-2">
+              {review.status !== 'completed' || hasUnresolvedErrors ? <AlertCircle size={22} className="text-yellow-600" /> : <GitMerge size={22} className="text-greenLight" />}
+              Confirm Merge
+            </h3>
+            <p className="text-[15px] font-medium text-greenDark/70 mb-6 leading-relaxed">
+              {review.status !== 'completed' 
+                ? "This PR has not finished being reviewed. Merging now means no review will have occurred at all." 
+                : hasUnresolvedErrors 
+                  ? "This PR has unresolved critical errors. Are you sure you want to merge anyway?" 
+                  : `Merge PR #${review.prNumber} into the default branch?`}
+            </p>
+            <div className="flex justify-end gap-3">
+              <button 
+                onClick={() => setShowMergeModal(false)}
+                className="px-4 py-2.5 text-sm font-bold text-greenDark/70 hover:text-greenDark bg-gray-50 hover:bg-gray-100 rounded-xl transition-colors focus:outline-none focus:ring-2 focus:ring-gray-200"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={() => {
+                  mergePR(review.prNumber, review.status !== 'completed' || hasUnresolvedErrors);
+                  setShowMergeModal(false);
+                }}
+                className={`flex items-center gap-2 px-5 py-2.5 text-sm font-bold text-white rounded-xl transition-all shadow-md focus:outline-none focus:ring-2 focus:ring-offset-2 ${
+                  review.status !== 'completed' || hasUnresolvedErrors 
+                    ? 'bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700 shadow-yellow-600/20 hover:shadow-yellow-600/40 focus:ring-yellow-500' 
+                    : 'bg-gradient-to-r from-greenLight to-greenDark hover:opacity-90 shadow-greenDark/20 hover:shadow-greenDark/40 focus:ring-greenDark'
+                }`}
+              >
+                <GitMerge size={16} />
+                {review.status !== 'completed' || hasUnresolvedErrors ? 'Merge Anyway' : 'Merge'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

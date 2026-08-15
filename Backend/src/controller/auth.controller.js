@@ -10,7 +10,7 @@ import { sendOTP, sendSignupOTP } from "../lib/email.js";
 import jwt from "jsonwebtoken";
 import OtpVerification from "../models/otp.model.js";
 
-export const requestSignupOtp = async (req, res) => {
+export const requestSignupOtp = async (req, res, next) => {
     try {
         const { email } = req.body;
         if (!email) return res.status(400).json({ message: "Email is required" });
@@ -33,14 +33,14 @@ export const requestSignupOtp = async (req, res) => {
         );
 
         await sendSignupOTP(email, otp);
+        logger.info(`Signup OTP requested for email: ${email}`);
         res.status(200).json({ message: "OTP sent to email" });
     } catch (error) {
-        logger.error(`Error in requestSignupOtp controller: ${error.message}`);
-        res.status(500).json({ message: "Internal server error" });
+        next(error);
     }
 }
 
-export const signup = async (req,res) =>{
+export const signup = async (req, res, next) =>{
     const {fullName,email,password,otp} = req.body
     try {
         if (!fullName || !email || !password || !otp) {
@@ -93,17 +93,17 @@ export const signup = async (req,res) =>{
             const userObj = newUser.toObject();
             delete userObj.password;
 
+            logger.info(`User successfully signed up: ${email}`);
             res.status(201).json(userObj)
         }else{
             res.status(400).json({message:"Invalid user data"})
         }
     } catch (error) {
-        logger.error(`error in signup controller: ${error.message}`)
-        res.status(500).json({message:"Internal server error"})
+        next(error);
     }
 }
 
-export const login = async (req,res) =>{
+export const login = async (req, res, next) =>{
     const {email,fullName,password} = req.body
     try {
         if (!email || !password) return res.status(400).json({message:"All fields are required"})
@@ -124,14 +124,14 @@ export const login = async (req,res) =>{
         const userObj = user.toObject();
         delete userObj.password;
         
+        logger.info(`User successfully logged in: ${email}`);
         res.status(200).json(userObj)
     } catch (error) {
-        logger.error(`Error in login controller: ${error.message}`)
-        res.status(500).json({message:"Internal server error"})
+        next(error);
     }
 }
 
-export const logout = async (req,res) =>{
+export const logout = async (req, res, next) =>{
     try {
         if (req.user && req.user._id) {
             // True session kill: increment tokenVersion so stolen refresh tokens are invalidated
@@ -139,14 +139,14 @@ export const logout = async (req,res) =>{
         }
         res.cookie("accessToken","",{maxAge:0})
         res.cookie("refreshToken","",{maxAge:0})
+        logger.info(`User logged out successfully`);
         res.status(200).json({message:"Logged out Successfully"})
     } catch (error) {
-        logger.error(`Error in logout controller: ${error.message}`)
-        res.status(500).json({message:"Internal server error"})        
+        next(error);
     }
 }
 
-export const refresh = async (req, res) => {
+export const refresh = async (req, res, next) => {
     try {
         const refreshToken = req.cookies.refreshToken;
         if (!refreshToken) return res.status(401).json({ message: "No refresh token provided" });
@@ -168,16 +168,17 @@ export const refresh = async (req, res) => {
         // We do NOT increment tokenVersion here, otherwise we'd log ourselves out.
         await generateTokens(user._id, user.tokenVersion, res);
         
+        logger.info(`Tokens refreshed successfully for user: ${user._id}`);
         res.status(200).json({ message: "Tokens refreshed successfully" });
     } catch (error) {
-        logger.error(`Error in refresh controller: ${error.message}`);
+        // Explicitly clear cookies and return 401 instead of letting next(error) return 500
         res.cookie("accessToken", "", { maxAge: 0 });
         res.cookie("refreshToken", "", { maxAge: 0 });
         res.status(401).json({ message: "Invalid refresh token" });
     }
 }
 
-export const forgotPassword = async (req, res) => {
+export const forgotPassword = async (req, res, next) => {
     try {
         const { email } = req.body;
         if (!email) return res.status(400).json({ message: "Email is required" });
@@ -203,14 +204,14 @@ export const forgotPassword = async (req, res) => {
 
         await sendOTP(user.email, otp);
 
+        logger.info(`Password reset OTP requested for email: ${email}`);
         res.status(200).json({ message: "If an account exists, a password reset email has been sent." });
     } catch (error) {
-        logger.error(`Error in forgotPassword controller: ${error.message}`);
-        res.status(500).json({ message: "Internal server error" });
+        next(error);
     }
 }
 
-export const resetPassword = async (req, res) => {
+export const resetPassword = async (req, res, next) => {
     try {
         const { email, otp, newPassword } = req.body;
         if (!email || !otp || !newPassword) {
@@ -251,21 +252,20 @@ export const resetPassword = async (req, res) => {
         user.tokenVersion += 1;
         await user.save();
 
+        logger.info(`Password successfully reset for email: ${email}`);
         res.status(200).json({ message: "Password reset successfully. You can now log in." });
     } catch (error) {
-        logger.error(`Error in resetPassword controller: ${error.message}`);
-        res.status(500).json({ message: "Internal server error" });
+        next(error);
     }
 }
 
-export const check = async (req,res) =>{
+export const check = async (req, res, next) =>{
     try {
         const user = await User.findById(req.user._id).select("-password");
         if (!user) return res.status(401).json({ message: "User not found" });
         res.status(200).json(user)
     } catch (error) {
-        logger.error(`error in checkAuth controller: ${error.message}`)
-        res.status(500).json({message:"Internal server error"})
+        next(error);
     }
 }
 
@@ -285,6 +285,8 @@ export const changePassword = async (req, res, next) => {
     const salt = await bcrypt.genSalt(10);
     user.password = await bcrypt.hash(newPassword, salt);
     await user.save();
+    
+    logger.info(`Password successfully updated for user: ${req.user._id}`);
     res.status(200).json({ message: "Password updated successfully" });
   } catch (error) {
     next(error);
@@ -314,6 +316,8 @@ export const deleteAccount = async (req, res, next) => {
 
     res.cookie("accessToken", "", { maxAge: 0 }); 
     res.cookie("refreshToken", "", { maxAge: 0 });
+    
+    logger.info(`User account successfully deleted for user: ${req.user._id}`);
     res.status(200).json({ message: "Account deleted" });
   } catch (error) {
     await session.abortTransaction();

@@ -31,7 +31,7 @@ const reviewSchema = new mongoose.Schema(
     headSha: String,
     status: {
       type: String,
-      enum: ["pending", "in_progress", "completed", "failed"],
+      enum: ["pending", "in_progress", "completed", "failed", "merged"],
       default: "pending",
     },
     findings: [findingSchema],

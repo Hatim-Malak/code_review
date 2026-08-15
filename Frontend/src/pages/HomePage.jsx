@@ -3,10 +3,11 @@ import CustomNavbar from "../components/CustomNavbar.jsx";
 import { Link } from "react-router-dom";
 import { useAuth } from "../store/useAuthStore.js";
 import { Helmet } from "react-helmet-async";
-import { 
-  Github, GitPullRequest, MessageSquare, Code2, 
+import {
+  Github, GitPullRequest, MessageSquare, Code2,
   Sparkles, Zap, ShieldCheck, LayoutDashboard,
-  CheckCircle2, Box, ArrowRight, Activity, PlayCircle, ChevronRight
+  CheckCircle2, Box, ArrowRight, Activity, PlayCircle, ChevronRight,
+  Bot, AlertTriangle
 } from "lucide-react";
 
 const FeatureCard = ({ icon: Icon, title, description }) => (
@@ -31,38 +32,48 @@ const DetailedFeatureCard = ({ icon: Icon, title, description }) => (
   </div>
 );
 
+const WORKFLOW_STEPS = [
+  {
+    n: "01",
+    icon: Github,
+    title: "Connect your repo",
+    desc: "Install the HatMind GitHub App on any repository — no CI pipeline or config files required.",
+  },
+  {
+    n: "02",
+    icon: Bot,
+    title: "AI reviews every PR",
+    desc: "Static analysis and a RAG-grounded LLM scan each pull request for bugs, security flaws, and style issues.",
+  },
+  {
+    n: "03",
+    icon: MessageSquare,
+    title: "Chat with your codebase",
+    desc: "Ask questions about any file, function, or dependency and get answers grounded in your real architecture.",
+  },
+];
+
 const HomePage = () => {
   const [fadeIn, setFadeIn] = useState(false);
-  const [currentSlide, setCurrentSlide] = useState(0);
+  const [reviewState, setReviewState] = useState("scanning"); // 'scanning' -> 'complete'
   const { authUser, logout } = useAuth();
 
-  const slides = [
-    "./dashboard-mockup.png",
-    "./pr-review-mockup.png",
-    "./arch-graph-mockup.png"
-  ];
-
   useEffect(() => {
-    const timer = setTimeout(() => setFadeIn(true), 100);
-    
-    // Carousel auto-play
-    const slideTimer = setInterval(() => {
-      setCurrentSlide((prev) => (prev + 1) % slides.length);
-    }, 4000);
-    
+    const fadeTimer = setTimeout(() => setFadeIn(true), 100);
+    const reviewTimer = setTimeout(() => setReviewState("complete"), 1500);
     return () => {
-      clearTimeout(timer);
-      clearInterval(slideTimer);
+      clearTimeout(fadeTimer);
+      clearTimeout(reviewTimer);
     };
-  }, [slides.length]);
+  }, []);
 
   const navItems = [
-    { label: "Home", href: "/" },
+    { label: "Dashboard", href: "/" },
     { label: "About", href: "/about" },
     ...(authUser
       ? [
-          { label: "Chat", href: "/chat" },
-          { label: "Reviews", href: "/reviews" },
+          { label: "AI Copilot", href: "/chat" },
+          { label: "Pull Requests", href: "/reviews" },
           { label: "Settings", href: "/settings" },
           { label: "Logout", href: "#", onClick: logout },
         ]
@@ -80,15 +91,15 @@ const HomePage = () => {
       </Helmet>
 
       <CustomNavbar logo="./HatMind.jpg" items={navItems} />
-      
+
       <main className={`transition-all duration-1000 transform ${fadeIn ? "opacity-100 translate-y-0" : "opacity-0 translate-y-10"}`}>
-        
+
         {/* HERO SECTION */}
         <section className="relative pt-32 pb-24 px-6 max-w-7xl mx-auto flex flex-col items-center text-center gap-10">
-          
+
           <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-greenDark/5 border border-greenDark/10 text-xs font-bold uppercase tracking-widest text-greenDark shadow-sm">
             <Sparkles size={14} className="text-greenLight" />
-            The Next Generation of Code Review
+            RAG-Powered Code Review
           </div>
 
           <h1 className="text-6xl md:text-8xl font-black tracking-tighter leading-[1.1] text-greenDark max-w-5xl">
@@ -99,7 +110,8 @@ const HomePage = () => {
           </h1>
 
           <p className="text-xl md:text-2xl text-gray-600 max-w-3xl leading-relaxed font-medium">
-            HatMind instantly reviews every pull request and provides deep, context-aware insights into your entire repository architecture.
+            HatMind pairs static analysis with a RAG-grounded LLM to review every pull request in seconds —
+            then lets your team chat with the entire codebase.
           </p>
 
           <div className="flex flex-col sm:flex-row items-center gap-4 mt-4 w-full sm:w-auto">
@@ -111,50 +123,100 @@ const HomePage = () => {
             </Link>
           </div>
 
-          {/* Hero Carousel */}
-          <div className="mt-16 w-full max-w-6xl relative z-10 group perspective-1000">
+          {/* Live product preview: a real HatMind review, not a screenshot carousel */}
+          <div className="mt-16 w-full max-w-4xl relative z-10">
             <div className="absolute inset-0 bg-gradient-to-b from-greenLight/20 to-transparent blur-3xl -z-10 rounded-full transform -translate-y-10 opacity-50"></div>
-            
-            <div className="relative w-full aspect-[16/9] rounded-3xl shadow-2xl border border-greenDark/10 overflow-hidden bg-black/5">
-              {slides.map((slide, index) => (
-                <img 
-                  key={index}
-                  src={slide} 
-                  alt={`Mockup Slide ${index + 1}`} 
-                  className={`absolute inset-0 w-full h-full object-cover object-top transition-opacity duration-1000 ease-in-out ${
-                    index === currentSlide ? "opacity-100 scale-100" : "opacity-0 scale-105 pointer-events-none"
-                  }`}
-                />
-              ))}
+
+            <div
+              className={`absolute -top-5 right-6 sm:right-10 z-20 flex items-center gap-2 px-4 py-2.5 rounded-full bg-white border border-greenDark/10 shadow-lg transition-all duration-500 ${
+                reviewState === "complete" ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-2 pointer-events-none"
+              }`}
+            >
+              <CheckCircle2 size={16} className="text-greenLight" />
+              <span className="text-sm font-bold text-greenDark">
+                Review complete <span className="text-gray-400 font-medium">· 2.4s</span>
+              </span>
             </div>
 
-            {/* Carousel Indicators */}
-            <div className="absolute -bottom-8 left-1/2 transform -translate-x-1/2 flex gap-3">
-              {slides.map((_, index) => (
-                <button
-                  key={index}
-                  onClick={() => setCurrentSlide(index)}
-                  className={`w-3 h-3 rounded-full transition-all duration-300 ${
-                    index === currentSlide ? "bg-greenDark w-8" : "bg-greenDark/20 hover:bg-greenDark/50"
-                  }`}
-                  aria-label={`Go to slide ${index + 1}`}
-                />
-              ))}
+            <div className="relative w-full rounded-2xl shadow-2xl border border-greenDark/10 overflow-hidden bg-[#0d1117] text-left">
+              {/* window chrome */}
+              <div className="flex items-center gap-2 px-5 py-3.5 bg-[#161b22] border-b border-white/5">
+                <div className="flex gap-1.5">
+                  <span className="w-3 h-3 rounded-full bg-[#ff5f57]"></span>
+                  <span className="w-3 h-3 rounded-full bg-[#febc2e]"></span>
+                  <span className="w-3 h-3 rounded-full bg-[#28c840]"></span>
+                </div>
+                <div className="ml-3 flex items-center gap-1.5 text-xs text-gray-400 font-mono">
+                  <span className="text-gray-500">checkout/</span>
+                  <span className="text-gray-200">payments.py</span>
+                </div>
+                <div className="ml-auto flex items-center gap-1.5 text-xs font-bold text-greenLight">
+                  <span className={`w-1.5 h-1.5 rounded-full bg-greenLight ${reviewState === "scanning" ? "animate-pulse" : ""}`}></span>
+                  {reviewState === "scanning" ? "HatMind reviewing…" : "HatMind"}
+                </div>
+              </div>
+
+              {/* diff */}
+              <div className="px-6 py-6 font-mono text-[13px] sm:text-sm leading-7 overflow-x-auto">
+                <div className="text-gray-500">def get_stripe_client():</div>
+                <div className="bg-red-500/10 -mx-6 px-6 text-red-300 whitespace-nowrap">
+                  <span className="text-red-500/70 select-none mr-3">−</span>api_key = "sk_live_51Hc29Shd8Ha03pQmz..."
+                </div>
+                <div className="bg-green-500/10 -mx-6 px-6 text-green-300 whitespace-nowrap">
+                  <span className="text-green-500/70 select-none mr-3">+</span>api_key = os.environ["STRIPE_SECRET_KEY"]
+                </div>
+                <div className="text-gray-500">    return stripe.Client(api_key=api_key)</div>
+              </div>
+
+              {/* AI comment */}
+              <div
+                className={`border-t border-white/5 bg-[#0a0d12] px-6 py-5 transition-all duration-700 ${
+                  reviewState === "complete" ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2"
+                }`}
+              >
+                <div className="flex items-start gap-3 text-left">
+                  <div className="w-8 h-8 rounded-lg bg-greenDark/80 flex items-center justify-center shrink-0">
+                    <Bot size={16} className="text-cream" />
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                      <span className="text-sm font-bold text-gray-100">HatMind</span>
+                      <span className="flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider text-red-400 bg-red-500/10 px-2 py-0.5 rounded-full">
+                        <AlertTriangle size={11} /> Critical
+                      </span>
+                    </div>
+                    <p className="text-sm text-gray-400 leading-relaxed">
+                      Hardcoded secret detected (Bandit B105). Move credentials to environment variables — never commit live keys to version control.
+                    </p>
+                    <span className="inline-block mt-3 text-xs font-bold text-greenLight border border-greenLight/30 rounded-full px-3 py-1">
+                      Suggested fix applied ✓
+                    </span>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
-          
+
         </section>
 
-        {/* LOGO CLOUD / SOCIAL PROOF */}
-        <section className="py-12 border-y border-greenDark/10 bg-white/50">
-          <div className="max-w-7xl mx-auto px-6 text-center">
-            <p className="text-sm font-bold tracking-widest uppercase text-gray-500 mb-8">Trusted by elite engineering teams</p>
-            <div className="flex flex-wrap justify-center items-center gap-12 md:gap-24 opacity-60 grayscale hover:grayscale-0 transition-all duration-500">
-              {/* Dummy logos using typography for professional look */}
-              <div className="text-2xl font-black tracking-tighter">AcmeCorp</div>
-              <div className="text-2xl font-bold tracking-tight font-serif italic">GlobalTech</div>
-              <div className="text-2xl font-bold uppercase tracking-widest">NEXUS</div>
-              <div className="text-2xl font-black tracking-tighter flex items-center gap-1"><Zap size={24}/> Spark</div>
+        {/* HOW IT WORKS */}
+        <section className="py-24 px-6 border-y border-greenDark/10 bg-white/50">
+          <div className="max-w-6xl mx-auto">
+            <div className="text-center mb-16 max-w-2xl mx-auto">
+              <h2 className="text-sm font-bold text-greenLight tracking-widest uppercase mb-3">The Workflow</h2>
+              <h3 className="text-3xl md:text-4xl font-black tracking-tight text-greenDark">From push to review in three steps</h3>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-10">
+              {WORKFLOW_STEPS.map(({ n, icon: Icon, title, desc }) => (
+                <div key={n} className="relative">
+                  <span className="text-6xl font-black text-greenDark/10 leading-none select-none">{n}</span>
+                  <div className="w-12 h-12 -mt-8 rounded-xl bg-greenDark text-cream flex items-center justify-center mb-5 shadow-sm relative">
+                    <Icon size={20} />
+                  </div>
+                  <h4 className="text-xl font-bold text-greenDark mb-2">{title}</h4>
+                  <p className="text-base text-gray-600 leading-relaxed font-medium">{desc}</p>
+                </div>
+              ))}
             </div>
           </div>
         </section>
@@ -170,24 +232,24 @@ const HomePage = () => {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              <FeatureCard 
-                icon={GitPullRequest} 
-                title="Automated PR Reviews" 
+              <FeatureCard
+                icon={GitPullRequest}
+                title="Automated PR Reviews"
                 description="Instantly reviews every commit, catching bugs, security flaws, and style violations before a human ever has to look."
               />
-              <FeatureCard 
-                icon={MessageSquare} 
-                title="Codebase AI Chatbot" 
+              <FeatureCard
+                icon={MessageSquare}
+                title="Codebase AI Chatbot"
                 description="Stop searching through endless files. Ask our chatbot complex questions about your repository and get accurate, context-aware answers."
               />
-              <FeatureCard 
-                icon={ShieldCheck} 
-                title="Enterprise-Grade Security" 
+              <FeatureCard
+                icon={ShieldCheck}
+                title="Enterprise-Grade Security"
                 description="Proactively identifies vulnerable dependencies, hardcoded secrets, and unsafe execution patterns in real-time."
               />
-              <FeatureCard 
-                icon={Github} 
-                title="Native GitHub Integration" 
+              <FeatureCard
+                icon={Github}
+                title="Native GitHub Integration"
                 description="No clunky CI pipelines to configure. Install the HatMind GitHub App and get automated reviews on your repositories instantly."
               />
             </div>
@@ -201,30 +263,30 @@ const HomePage = () => {
               <h2 className="text-sm font-bold text-greenLight tracking-widest uppercase mb-4">The Platform</h2>
               <h3 className="text-4xl md:text-5xl font-black tracking-tight text-greenDark">A complete suite for engineering excellence.</h3>
             </div>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-              <DetailedFeatureCard 
-                icon={CheckCircle2} title="Actionable Feedback" 
+              <DetailedFeatureCard
+                icon={CheckCircle2} title="Actionable Feedback"
                 description="No more vague complaints. Get precise line-by-line comments with suggested code fixes you can commit immediately."
               />
-              <DetailedFeatureCard 
-                icon={Box} title="Semantic Architecture Understanding" 
+              <DetailedFeatureCard
+                icon={Box} title="Semantic Architecture Understanding"
                 description="We index your repository using advanced Retrieval-Augmented Generation (RAG) to understand how your services connect."
               />
-              <DetailedFeatureCard 
-                icon={Code2} title="Style Standard Enforcement" 
+              <DetailedFeatureCard
+                icon={Code2} title="Style Standard Enforcement"
                 description="Automatically enforce your team's specific coding guidelines and best practices without manual nitpicking."
               />
-              <DetailedFeatureCard 
-                icon={LayoutDashboard} title="Custom Review Thresholds" 
+              <DetailedFeatureCard
+                icon={LayoutDashboard} title="Custom Review Thresholds"
                 description="Configure exactly what HatMind should care about. Silence minor styling issues and focus purely on logic if preferred."
               />
-              <DetailedFeatureCard 
-                icon={Activity} title="Real-Time Analytics" 
+              <DetailedFeatureCard
+                icon={Activity} title="Real-Time Analytics"
                 description="Track how fast your team is merging PRs and monitor the reduction in post-deployment bugs over time."
               />
-              <DetailedFeatureCard 
-                icon={Zap} title="Sub-Second Latency" 
+              <DetailedFeatureCard
+                icon={Zap} title="Sub-Second Latency"
                 description="Our optimized engine processes standard pull requests in seconds, never blocking your deployment pipelines."
               />
             </div>
@@ -234,11 +296,11 @@ const HomePage = () => {
         {/* BOTTOM CTA */}
         <section className="py-40 px-6 relative overflow-hidden bg-greenDark">
           <div className="absolute inset-0 opacity-10 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-greenLight to-transparent mix-blend-overlay"></div>
-          
+
           <div className="max-w-5xl mx-auto text-center relative z-10 flex flex-col items-center">
             <h2 className="text-5xl md:text-7xl font-black tracking-tighter mb-8 text-cream">Automate your engineering standards.</h2>
             <p className="text-xl text-cream/80 font-medium mb-12 max-w-2xl mx-auto leading-relaxed">
-              Join the elite engineering teams who have eliminated their code review bottlenecks and ship with absolute confidence.
+              Join the engineering teams who have eliminated their code review bottlenecks and ship with confidence.
             </p>
             <Link to={authUser ? "/settings" : "/signup"} className="inline-flex items-center gap-3 px-12 py-6 bg-cream hover:bg-white text-greenDark rounded-xl font-bold text-xl transition-all shadow-2xl hover:-translate-y-1 group">
               Start Free Trial <ChevronRight size={24} className="group-hover:translate-x-1 transition-transform" />
@@ -258,7 +320,7 @@ const HomePage = () => {
                 The AI pair programmer that deeply understands your architecture. Code reviews and codebase chat on autopilot.
               </p>
             </div>
-            
+
             <div className="grid grid-cols-2 md:grid-cols-3 gap-12 w-full md:w-auto">
               <div className="flex flex-col gap-5">
                 <h4 className="font-bold text-greenDark uppercase tracking-wider text-sm">Product</h4>

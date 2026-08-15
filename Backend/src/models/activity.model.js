@@ -4,7 +4,7 @@ const activitySchema = new mongoose.Schema(
   {
     type: {
       type: String,
-      enum: ["review_started", "review_completed", "review_failed", "reindexed", "pr_merged_clean"],
+      enum: ["review_started", "review_completed", "review_failed", "reindexed", "pr_merged_clean", "pr_merged"],
       required: true,
     },
     repoId: {

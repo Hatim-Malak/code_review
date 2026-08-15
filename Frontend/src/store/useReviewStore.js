@@ -20,6 +20,8 @@ export const useReviewStore = create((set, get) => ({
   isLoadingRepos: false,
   isLoadingReviews: false,
   isLoadingReviewDetail: false,
+  isLoadingDashboard: false,
+  isMergingPR: false,
   
   dashboardStats: null,
   dashboardStatsLastFetched: 0,
@@ -175,7 +177,6 @@ export const useReviewStore = create((set, get) => ({
     
     const { reviewsLastFetched } = get();
     
-    // Conditional fetching: skip if recently fetched, UNLESS it's a forced refetch or pagination
     if (!force && page === 1 && reviewsLastFetched[repoKey] && (Date.now() - reviewsLastFetched[repoKey] < 3 * 60 * 1000)) {
         return; // Use cached data
     }
@@ -284,6 +285,38 @@ export const useReviewStore = create((set, get) => ({
     } catch (error) {
       console.error("Error re-running review:", error);
       toast.error("Failed to re-run review");
+    }
+  },
+
+  mergePR: async (prNumber, override = false) => {
+    const { selectedRepo } = get();
+    if (!selectedRepo) return;
+    
+    try {
+      set({ isMergingPR: true });
+      await axiosInstance.post(`/repos/${selectedRepo.owner}/${selectedRepo.name}/pr/${prNumber}/merge`, { override });
+      toast.success("PR merged successfully");
+      
+      const { selectedReview } = get();
+      if (selectedReview && selectedReview.prNumber === prNumber) {
+        set({ selectedReview: { ...selectedReview, status: "merged" } });
+      }
+      
+      const repoKey = `${selectedRepo.owner}/${selectedRepo.name}`;
+      const { reviewsByRepoId } = get();
+      if (reviewsByRepoId[repoKey]) {
+        set({
+          reviewsByRepoId: {
+            ...reviewsByRepoId,
+            [repoKey]: reviewsByRepoId[repoKey].map(r => r.prNumber === prNumber ? { ...r, status: "merged" } : r)
+          }
+        });
+      }
+    } catch (error) {
+      console.error("Error merging PR:", error);
+      toast.error(error.response?.data?.message || "Failed to merge PR");
+    } finally {
+      set({ isMergingPR: false });
     }
   },
 

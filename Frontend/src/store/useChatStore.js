@@ -76,6 +76,7 @@ export const useChat = create((set, get) => ({
       if (res.data) set({ sessions: res.data });
     } catch (error) {
       console.error("Error loading sessions:", error);
+      toast.error(error.response?.data?.message || "Failed to load chat sessions");
     } finally {
       set({ isLoadingSessions: false });
     }
@@ -89,6 +90,7 @@ export const useChat = create((set, get) => ({
       if (res.data) set({ chats: res.data });
     } catch (error) {
       console.error("Error loading session history:", error);
+      toast.error(error.response?.data?.message || "Failed to load chat history");
       set({ chats: [] });
     } finally {
       set({ isHistoryLoading: false });
@@ -158,6 +160,7 @@ export const useChat = create((set, get) => ({
       if (res.data) set({ chats: res.data });
     } catch (error) {
       console.error("Error loading history:", error);
+      toast.error(error.response?.data?.message || "Failed to load chat history");
     }
   },
 }));

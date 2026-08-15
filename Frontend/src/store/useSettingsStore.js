@@ -62,6 +62,7 @@ export const useSettingsStore = create(
           set({ githubConnections: res.data });
         } catch (error) {
           console.error("Failed to fetch github connections:", error);
+          toast.error(error.response?.data?.message || "Failed to load GitHub connections");
         }
       },
 

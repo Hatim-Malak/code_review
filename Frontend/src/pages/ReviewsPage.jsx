@@ -138,12 +138,12 @@ const ReviewsPage = () => {
   );
 
   const navItems = [
-    { label: "Home", href: "/" },
+    { label: "Dashboard", href: "/" },
     { label: "About", href: "/about" },
     ...(authUser
       ? [
-          { label: "Chat", href: "/chat" },
-          { label: "Reviews", href: "/reviews" },
+          { label: "AI Copilot", href: "/chat" },
+          { label: "Pull Requests", href: "/reviews" },
           { label: "Settings", href: "/settings" },
           { label: "Logout", href: "#", onClick: logout },
         ]

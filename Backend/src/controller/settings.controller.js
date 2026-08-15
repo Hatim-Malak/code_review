@@ -35,6 +35,8 @@ export const updateProfile = async (req, res, next) => {
 
     await user.save();
     const updatedUser = await User.findById(req.user._id).select("-password");
+    
+    logger.info(`User profile updated for user: ${req.user._id}`);
     res.status(200).json(updatedUser);
   } catch (error) {
     next(error);
@@ -59,6 +61,8 @@ export const updatePreferences = async (req, res, next) => {
 
     await user.save();
     const updatedUser = await User.findById(req.user._id).select("-password");
+    
+    logger.info(`User preferences updated for user: ${req.user._id}`);
     res.status(200).json(updatedUser);
   } catch (error) {
     next(error);
@@ -97,6 +101,7 @@ export const disconnectInstallation = async (req, res, next) => {
       { $set: { claimedByUserId: null, claimedAt: null } }
     );
 
+    logger.info(`GitHub installation ${installationId} disconnected by user: ${req.user._id}`);
     res.status(200).json({ message: "Installation disconnected and repos unclaimed" });
   } catch (error) {
     next(error);
@@ -117,6 +122,7 @@ export const disconnectRepo = async (req, res, next) => {
     repo.claimedAt = null;
     await repo.save();
 
+    logger.info(`Repo ${owner}/${repoName} disconnected by user: ${req.user._id}`);
     res.status(200).json({ message: "Repo disconnected" });
   } catch (error) {
     next(error);
@@ -142,6 +148,8 @@ export const updateRepoPreferences = async (req, res, next) => {
     };
 
     await repo.save();
+    
+    logger.info(`Repo preferences updated for ${owner}/${repoName} by user: ${req.user._id}`);
     res.status(200).json(repo.reviewPreferences);
   } catch (error) {
     next(error);
