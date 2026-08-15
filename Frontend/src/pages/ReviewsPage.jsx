@@ -142,7 +142,7 @@ const ReviewsPage = () => {
     { label: "About", href: "/about" },
     ...(authUser
       ? [
-          { label: "AI Copilot", href: "/chat" },
+          { label: "HatMind AI", href: "/chat" },
           { label: "Pull Requests", href: "/reviews" },
           { label: "Settings", href: "/settings" },
           { label: "Logout", href: "#", onClick: logout },

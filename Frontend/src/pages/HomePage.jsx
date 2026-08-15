@@ -4,53 +4,67 @@ import { Link } from "react-router-dom";
 import { useAuth } from "../store/useAuthStore.js";
 import { Helmet } from "react-helmet-async";
 import {
-  Github, GitPullRequest, MessageSquare, Code2,
-  Sparkles, Zap, ShieldCheck, LayoutDashboard,
-  CheckCircle2, Box, ArrowRight, Activity, PlayCircle, ChevronRight,
-  Bot, AlertTriangle
+  Github, MessageSquare, Sparkles, ShieldCheck,
+  CheckCircle2, ArrowRight, PlayCircle, ChevronRight,
+  Bot, AlertTriangle,
 } from "lucide-react";
 
-const FeatureCard = ({ icon: Icon, title, description }) => (
-  <div className="flex flex-col gap-4 p-8 rounded-3xl bg-white border border-greenDark/10 hover:border-greenLight/50 transition-all group shadow-sm hover:shadow-xl">
-    <div className="w-14 h-14 rounded-2xl bg-greenDark text-cream flex items-center justify-center group-hover:-translate-y-1 transition-transform duration-300">
-      <Icon size={24} />
+/* Reused "window" motif — the one signature visual, shown in different
+   contexts (a review, a chat, a scan, a repo list) rather than repeated
+   icon-and-card grids. */
+const WindowPanel = ({ label, live, children }) => (
+  <div className="rounded-2xl shadow-xl border border-greenDark/10 overflow-hidden bg-[#0d1117] text-left">
+    <div className="flex items-center gap-2 px-4 py-3 bg-[#161b22] border-b border-white/5">
+      <div className="flex gap-1.5">
+        <span className="w-2.5 h-2.5 rounded-full bg-[#ff5f57]"></span>
+        <span className="w-2.5 h-2.5 rounded-full bg-[#febc2e]"></span>
+        <span className="w-2.5 h-2.5 rounded-full bg-[#28c840]"></span>
+      </div>
+      <div className="ml-2 text-xs text-gray-400 font-mono truncate">{label}</div>
+      {live && (
+        <div className="ml-auto flex items-center gap-1.5 text-[11px] font-bold text-greenLight shrink-0">
+          <span className="w-1.5 h-1.5 rounded-full bg-greenLight animate-pulse"></span>
+          live
+        </div>
+      )}
     </div>
-    <h3 className="text-2xl font-black text-greenDark tracking-tight mt-2">{title}</h3>
-    <p className="text-base text-gray-600 leading-relaxed font-medium">{description}</p>
+    <div className="px-5 py-5">{children}</div>
   </div>
 );
 
-const DetailedFeatureCard = ({ icon: Icon, title, description }) => (
-  <div className="flex items-start gap-5 p-8 rounded-3xl bg-white/60 border border-greenDark/10 hover:bg-white transition-all backdrop-blur-sm shadow-sm hover:shadow-lg group">
-    <div className="w-12 h-12 rounded-xl bg-greenDark/5 flex items-center justify-center text-greenDark shrink-0 group-hover:bg-greenDark group-hover:text-cream transition-colors duration-300">
-      <Icon size={24} />
+const ShowcaseRow = ({ eyebrow, title, description, points, reverse, visual, first }) => (
+  <div className={`grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-20 items-center py-16 md:py-20 ${first ? "" : "border-t border-greenDark/10"}`}>
+    <div className={reverse ? "lg:order-2" : ""}>
+      <span className="text-xs font-bold text-greenLight tracking-widest uppercase">{eyebrow}</span>
+      <h3 className="text-3xl md:text-4xl font-black tracking-tight text-greenDark mt-3 mb-5">{title}</h3>
+      <p className="text-lg text-gray-600 leading-relaxed font-medium mb-6">{description}</p>
+      <ul className="space-y-3">
+        {points.map((p) => (
+          <li key={p} className="flex items-start gap-3 text-base text-gray-700 font-medium">
+            <CheckCircle2 size={18} className="text-greenLight shrink-0 mt-0.5" />
+            {p}
+          </li>
+        ))}
+      </ul>
     </div>
-    <div>
-      <h3 className="text-lg font-bold text-greenDark mb-2">{title}</h3>
-      <p className="text-sm text-gray-600 leading-relaxed font-medium">{description}</p>
-    </div>
+    <div className={reverse ? "lg:order-1" : ""}>{visual}</div>
   </div>
 );
 
-const WORKFLOW_STEPS = [
-  {
-    n: "01",
-    icon: Github,
-    title: "Connect your repo",
-    desc: "Install the HatMind GitHub App on any repository — no CI pipeline or config files required.",
-  },
-  {
-    n: "02",
-    icon: Bot,
-    title: "AI reviews every PR",
-    desc: "Static analysis and a RAG-grounded LLM scan each pull request for bugs, security flaws, and style issues.",
-  },
-  {
-    n: "03",
-    icon: MessageSquare,
-    title: "Chat with your codebase",
-    desc: "Ask questions about any file, function, or dependency and get answers grounded in your real architecture.",
-  },
+const CAPABILITIES = [
+  { title: "Actionable Feedback", desc: "Line-by-line comments with fixes you can commit immediately." },
+  { title: "Semantic Architecture Understanding", desc: "RAG indexing shows how your services actually connect." },
+  { title: "Style Standard Enforcement", desc: "Your team's guidelines, enforced without manual nitpicking." },
+  { title: "Custom Review Thresholds", desc: "Silence minor style noise and focus purely on logic." },
+  { title: "Real-Time Analytics", desc: "Track merge speed and the drop in post-deploy bugs." },
+  { title: "Sub-Second Latency", desc: "Standard pull requests process in seconds, not minutes." },
+];
+
+const STATS = [
+  { value: "3", label: "Static analyzers grounding every review" },
+  { value: "<3s", label: "Average pull request turnaround" },
+  { value: "100%", label: "Comments anchored to an exact line" },
+  { value: "0", label: "CI config files required to start" },
 ];
 
 const HomePage = () => {
@@ -72,7 +86,7 @@ const HomePage = () => {
     { label: "About", href: "/about" },
     ...(authUser
       ? [
-          { label: "AI Copilot", href: "/chat" },
+          { label: "HatMind AI", href: "/chat" },
           { label: "Pull Requests", href: "/reviews" },
           { label: "Settings", href: "/settings" },
           { label: "Logout", href: "#", onClick: logout },
@@ -94,222 +108,260 @@ const HomePage = () => {
 
       <main className={`transition-all duration-1000 transform ${fadeIn ? "opacity-100 translate-y-0" : "opacity-0 translate-y-10"}`}>
 
-        {/* HERO SECTION */}
-        <section className="relative pt-32 pb-24 px-6 max-w-7xl mx-auto flex flex-col items-center text-center gap-10">
+        {/* HERO — asymmetric split, not a centered stack */}
+        <section className="relative pt-36 pb-28 px-6 max-w-7xl mx-auto">
+          <div className="grid grid-cols-1 lg:grid-cols-[1.05fr_1fr] gap-16 items-center">
 
-          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-greenDark/5 border border-greenDark/10 text-xs font-bold uppercase tracking-widest text-greenDark shadow-sm">
-            <Sparkles size={14} className="text-greenLight" />
-            RAG-Powered Code Review
-          </div>
+            <div className="text-center lg:text-left">
+              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-greenDark/5 border border-greenDark/10 text-xs font-bold uppercase tracking-widest text-greenDark shadow-sm mb-8">
+                <Sparkles size={14} className="text-greenLight" />
+                RAG-Powered Code Review
+              </div>
 
-          <h1 className="text-6xl md:text-8xl font-black tracking-tighter leading-[1.1] text-greenDark max-w-5xl">
-            Ship perfect code. <br />
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-greenDark to-greenLight">
-              Without the bottleneck.
-            </span>
-          </h1>
+              <h1 className="text-5xl md:text-6xl xl:text-7xl font-black tracking-tighter leading-[1.08] text-greenDark">
+                Ship perfect code.<br />
+                <span className="text-transparent bg-clip-text bg-gradient-to-r from-greenDark to-greenLight">
+                  Without the bottleneck.
+                </span>
+              </h1>
 
-          <p className="text-xl md:text-2xl text-gray-600 max-w-3xl leading-relaxed font-medium">
-            HatMind pairs static analysis with a RAG-grounded LLM to review every pull request in seconds —
-            then lets your team chat with the entire codebase.
-          </p>
+              <p className="text-xl text-gray-600 max-w-xl mx-auto lg:mx-0 leading-relaxed font-medium mt-7">
+                HatMind pairs static analysis with a RAG-grounded LLM to review every pull request in seconds —
+                then lets your team chat with the entire codebase.
+              </p>
 
-          <div className="flex flex-col sm:flex-row items-center gap-4 mt-4 w-full sm:w-auto">
-            <Link to={authUser ? "/settings" : "/signup"} className="w-full sm:w-auto px-10 py-5 bg-greenDark hover:bg-greenDark/90 text-cream rounded-xl font-bold text-lg transition-all shadow-xl hover:shadow-2xl hover:-translate-y-1 flex items-center justify-center gap-2">
-              Get Started for Free <ArrowRight size={20} />
-            </Link>
-            <Link to="/chat" className="w-full sm:w-auto px-10 py-5 bg-white hover:bg-gray-50 border-2 border-greenDark/10 rounded-xl font-bold text-lg text-greenDark transition-all shadow-sm hover:shadow-md flex items-center justify-center gap-2">
-              Try Interactive Demo <PlayCircle size={20} />
-            </Link>
-          </div>
+              <div className="flex flex-col sm:flex-row items-center lg:items-start gap-4 mt-9">
+                <Link to={authUser ? "/settings" : "/signup"} className="w-full sm:w-auto px-8 py-4 bg-greenDark hover:bg-greenDark/90 text-cream rounded-xl font-bold text-base transition-all shadow-xl hover:shadow-2xl hover:-translate-y-1 flex items-center justify-center gap-2">
+                  Get Started for Free <ArrowRight size={18} />
+                </Link>
+                <Link to="/chat" className="w-full sm:w-auto px-8 py-4 bg-white hover:bg-gray-50 border-2 border-greenDark/10 rounded-xl font-bold text-base text-greenDark transition-all shadow-sm hover:shadow-md flex items-center justify-center gap-2">
+                  Try Interactive Demo <PlayCircle size={18} />
+                </Link>
+              </div>
 
-          {/* Live product preview: a real HatMind review, not a screenshot carousel */}
-          <div className="mt-16 w-full max-w-4xl relative z-10">
-            <div className="absolute inset-0 bg-gradient-to-b from-greenLight/20 to-transparent blur-3xl -z-10 rounded-full transform -translate-y-10 opacity-50"></div>
-
-            <div
-              className={`absolute -top-5 right-6 sm:right-10 z-20 flex items-center gap-2 px-4 py-2.5 rounded-full bg-white border border-greenDark/10 shadow-lg transition-all duration-500 ${
-                reviewState === "complete" ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-2 pointer-events-none"
-              }`}
-            >
-              <CheckCircle2 size={16} className="text-greenLight" />
-              <span className="text-sm font-bold text-greenDark">
-                Review complete <span className="text-gray-400 font-medium">· 2.4s</span>
-              </span>
+              <div className="flex items-center justify-center lg:justify-start gap-2.5 text-sm font-bold text-gray-500 mt-10 flex-wrap">
+                <span className="text-greenDark">Connect repo</span>
+                <ChevronRight size={14} />
+                <span className="text-greenDark">AI reviews PR</span>
+                <ChevronRight size={14} />
+                <span className="text-greenDark">Chat with codebase</span>
+              </div>
             </div>
 
-            <div className="relative w-full rounded-2xl shadow-2xl border border-greenDark/10 overflow-hidden bg-[#0d1117] text-left">
-              {/* window chrome */}
-              <div className="flex items-center gap-2 px-5 py-3.5 bg-[#161b22] border-b border-white/5">
-                <div className="flex gap-1.5">
-                  <span className="w-3 h-3 rounded-full bg-[#ff5f57]"></span>
-                  <span className="w-3 h-3 rounded-full bg-[#febc2e]"></span>
-                  <span className="w-3 h-3 rounded-full bg-[#28c840]"></span>
-                </div>
-                <div className="ml-3 flex items-center gap-1.5 text-xs text-gray-400 font-mono">
-                  <span className="text-gray-500">checkout/</span>
-                  <span className="text-gray-200">payments.py</span>
-                </div>
-                <div className="ml-auto flex items-center gap-1.5 text-xs font-bold text-greenLight">
-                  <span className={`w-1.5 h-1.5 rounded-full bg-greenLight ${reviewState === "scanning" ? "animate-pulse" : ""}`}></span>
-                  {reviewState === "scanning" ? "HatMind reviewing…" : "HatMind"}
-                </div>
-              </div>
+            <div className="relative">
+              <div className="absolute inset-0 bg-gradient-to-b from-greenLight/20 to-transparent blur-3xl -z-10 rounded-full opacity-50"></div>
 
-              {/* diff */}
-              <div className="px-6 py-6 font-mono text-[13px] sm:text-sm leading-7 overflow-x-auto">
-                <div className="text-gray-500">def get_stripe_client():</div>
-                <div className="bg-red-500/10 -mx-6 px-6 text-red-300 whitespace-nowrap">
-                  <span className="text-red-500/70 select-none mr-3">−</span>api_key = "sk_live_51Hc29Shd8Ha03pQmz..."
-                </div>
-                <div className="bg-green-500/10 -mx-6 px-6 text-green-300 whitespace-nowrap">
-                  <span className="text-green-500/70 select-none mr-3">+</span>api_key = os.environ["STRIPE_SECRET_KEY"]
-                </div>
-                <div className="text-gray-500">    return stripe.Client(api_key=api_key)</div>
-              </div>
-
-              {/* AI comment */}
               <div
-                className={`border-t border-white/5 bg-[#0a0d12] px-6 py-5 transition-all duration-700 ${
-                  reviewState === "complete" ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2"
+                className={`absolute -top-5 right-4 sm:right-8 z-20 flex items-center gap-2 px-4 py-2.5 rounded-full bg-white border border-greenDark/10 shadow-lg transition-all duration-500 ${
+                  reviewState === "complete" ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-2 pointer-events-none"
                 }`}
               >
-                <div className="flex items-start gap-3 text-left">
-                  <div className="w-8 h-8 rounded-lg bg-greenDark/80 flex items-center justify-center shrink-0">
-                    <Bot size={16} className="text-cream" />
+                <CheckCircle2 size={16} className="text-greenLight" />
+                <span className="text-sm font-bold text-greenDark">
+                  Review complete <span className="text-gray-400 font-medium">· 2.4s</span>
+                </span>
+              </div>
+
+              <WindowPanel label="checkout/payments.py" live={reviewState === "scanning"}>
+                <div className="font-mono text-[13px] sm:text-sm leading-7 overflow-hidden">
+                  <div className="text-gray-500">def get_stripe_client():</div>
+                  <div className="bg-red-500/10 -mx-5 px-5 text-red-300 whitespace-nowrap">
+                    <span className="text-red-500/70 select-none mr-3">−</span>api_key = "sk_live_51Hc29Shd8Ha03pQmz..."
                   </div>
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-                      <span className="text-sm font-bold text-gray-100">HatMind</span>
-                      <span className="flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider text-red-400 bg-red-500/10 px-2 py-0.5 rounded-full">
-                        <AlertTriangle size={11} /> Critical
-                      </span>
+                  <div className="bg-green-500/10 -mx-5 px-5 text-green-300 whitespace-nowrap">
+                    <span className="text-green-500/70 select-none mr-3">+</span>api_key = os.environ["STRIPE_SECRET_KEY"]
+                  </div>
+                  <div className="text-gray-500">    return stripe.Client(api_key=api_key)</div>
+                </div>
+
+                <div
+                  className={`mt-5 pt-5 border-t border-white/5 transition-all duration-700 ${
+                    reviewState === "complete" ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2"
+                  }`}
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-greenDark/80 flex items-center justify-center shrink-0">
+                      <Bot size={16} className="text-cream" />
                     </div>
-                    <p className="text-sm text-gray-400 leading-relaxed">
-                      Hardcoded secret detected (Bandit B105). Move credentials to environment variables — never commit live keys to version control.
-                    </p>
-                    <span className="inline-block mt-3 text-xs font-bold text-greenLight border border-greenLight/30 rounded-full px-3 py-1">
-                      Suggested fix applied ✓
-                    </span>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                        <span className="text-sm font-bold text-gray-100">HatMind</span>
+                        <span className="flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider text-red-400 bg-red-500/10 px-2 py-0.5 rounded-full">
+                          <AlertTriangle size={11} /> Critical
+                        </span>
+                      </div>
+                      <p className="text-sm text-gray-400 leading-relaxed">
+                        Hardcoded secret detected (Bandit B105). Move credentials to environment variables — never commit live keys.
+                      </p>
+                    </div>
                   </div>
                 </div>
-              </div>
+              </WindowPanel>
             </div>
-          </div>
 
+          </div>
         </section>
 
-        {/* HOW IT WORKS */}
-        <section className="py-24 px-6 border-y border-greenDark/10 bg-white/50">
-          <div className="max-w-6xl mx-auto">
-            <div className="text-center mb-16 max-w-2xl mx-auto">
-              <h2 className="text-sm font-bold text-greenLight tracking-widest uppercase mb-3">The Workflow</h2>
-              <h3 className="text-3xl md:text-4xl font-black tracking-tight text-greenDark">From push to review in three steps</h3>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-10">
-              {WORKFLOW_STEPS.map(({ n, icon: Icon, title, desc }) => (
-                <div key={n} className="relative">
-                  <span className="text-6xl font-black text-greenDark/10 leading-none select-none">{n}</span>
-                  <div className="w-12 h-12 -mt-8 rounded-xl bg-greenDark text-cream flex items-center justify-center mb-5 shadow-sm relative">
-                    <Icon size={20} />
+        {/* FEATURE SHOWCASE — alternating rows, each backed by the same panel motif in a new context */}
+        <section className="px-6 max-w-6xl mx-auto">
+          <ShowcaseRow
+            first
+            eyebrow="Automated Reviews"
+            title="Every pull request, reviewed before a human looks."
+            description="Static analysis catches the obvious. The LLM catches the rest — logic errors, unsafe patterns, and edge cases that pattern-matching alone would miss."
+            points={["Line-by-line comments with suggested fixes", "Runs on every push, no manual trigger needed", "Grounded in Bandit and Ruff, not guesswork"]}
+            visual={
+              <WindowPanel label="checkout/pricing.py — review">
+                <div className="font-mono text-xs sm:text-sm leading-6">
+                  <div className="text-gray-500">def calculate_discount(cart):</div>
+                  <div className="bg-red-500/10 -mx-5 px-5 text-red-300">
+                    <span className="text-red-500/70 select-none mr-2">−</span>return cart.total * 0.5
                   </div>
-                  <h4 className="text-xl font-bold text-greenDark mb-2">{title}</h4>
-                  <p className="text-base text-gray-600 leading-relaxed font-medium">{desc}</p>
+                  <div className="bg-green-500/10 -mx-5 px-5 text-green-300">
+                    <span className="text-green-500/70 select-none mr-2">+</span>return cart.total * min(coupon.rate, MAX_DISCOUNT)
+                  </div>
+                  <div className="mt-4 flex items-start gap-2 text-gray-400">
+                    <AlertTriangle size={14} className="text-yellow-400 shrink-0 mt-0.5" />
+                    Unbounded discount — a malformed coupon could zero out the cart total.
+                  </div>
+                </div>
+              </WindowPanel>
+            }
+          />
+
+          <ShowcaseRow
+            reverse
+            eyebrow="Codebase Chat"
+            title="Ask your codebase questions in plain English."
+            description="No more grepping through unfamiliar files. HatMind indexes your repository with RAG, so answers are grounded in the code that actually exists — with citations."
+            points={["Answers cite the exact file and line", "Understands cross-service architecture", "Works on any repo the moment it's connected"]}
+            visual={
+              <WindowPanel label="chat — hatmind">
+                <div className="space-y-4 text-sm">
+                  <div className="flex justify-end">
+                    <div className="max-w-[85%] rounded-2xl rounded-tr-sm bg-white/10 px-4 py-2.5 text-gray-200">
+                      How does checkout handle refunds?
+                    </div>
+                  </div>
+                  <div className="flex justify-start">
+                    <div className="max-w-[90%] rounded-2xl rounded-tl-sm bg-greenDark/40 px-4 py-2.5 text-gray-200 leading-relaxed">
+                      Refunds run through <code className="text-greenLight font-mono text-xs">process_refund()</code>, which calls Stripe's Refund API and marks the order <code className="text-greenLight font-mono text-xs">REFUNDED</code>.
+                      <div className="mt-2">
+                        <span className="text-[10px] font-mono bg-white/5 px-2 py-0.5 rounded text-gray-400">checkout/refunds.py:42</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </WindowPanel>
+            }
+          />
+
+          <ShowcaseRow
+            eyebrow="Security"
+            title="Enterprise-grade checks, on every commit."
+            description="Vulnerable dependencies, hardcoded secrets, and unsafe execution patterns get flagged before they ever reach a deploy."
+            points={["Dependency audits on every pull request", "Secret scanning built in, not bolted on", "Findings prioritized by real severity"]}
+            visual={
+              <WindowPanel label="security-scan.log">
+                <div className="space-y-3.5 font-mono text-sm">
+                  <div className="flex items-center gap-3 text-gray-300">
+                    <CheckCircle2 size={16} className="text-greenLight shrink-0" /> No hardcoded secrets found
+                  </div>
+                  <div className="flex items-center gap-3 text-gray-300">
+                    <CheckCircle2 size={16} className="text-greenLight shrink-0" /> 12 dependencies audited
+                  </div>
+                  <div className="flex items-center gap-3 text-gray-300">
+                    <AlertTriangle size={16} className="text-yellow-400 shrink-0" /> 1 unsafe deserialization pattern
+                  </div>
+                </div>
+              </WindowPanel>
+            }
+          />
+
+          <ShowcaseRow
+            reverse
+            eyebrow="GitHub Native"
+            title="Install the app. Skip the pipeline."
+            description="No YAML to write, no CI stage to wire up. Connect a repository and HatMind starts reviewing on the very next pull request."
+            points={["One-click install from the GitHub Marketplace", "Works alongside your existing CI, not instead of it", "Per-repo isolation for private codebases"]}
+            visual={
+              <WindowPanel label="github.com/acme">
+                <div className="space-y-3">
+                  {[
+                    { name: "acme/checkout-service", status: "Active" },
+                    { name: "acme/payments-api", status: "Active" },
+                    { name: "acme/auth-gateway", status: "Reviewing…" },
+                  ].map((repo) => (
+                    <div key={repo.name} className="flex items-center justify-between px-4 py-3 rounded-lg bg-white/5 border border-white/5">
+                      <div className="flex items-center gap-2.5 text-sm font-mono text-gray-300 truncate">
+                        <Github size={14} className="text-gray-500 shrink-0" />
+                        {repo.name}
+                      </div>
+                      <span className={`text-xs font-bold px-2.5 py-1 rounded-full shrink-0 ${repo.status === "Active" ? "bg-greenLight/10 text-greenLight" : "bg-yellow-500/10 text-yellow-400"}`}>
+                        {repo.status}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </WindowPanel>
+            }
+          />
+        </section>
+
+        {/* CAPABILITIES — a spec sheet, not another card grid */}
+        <section className="py-24 px-6 bg-white border-y border-greenDark/10">
+          <div className="max-w-5xl mx-auto">
+            <div className="mb-14">
+              <h2 className="text-sm font-bold text-greenLight tracking-widest uppercase mb-3">Capabilities</h2>
+              <h3 className="text-3xl md:text-4xl font-black tracking-tight text-greenDark">Everything else you'd expect.</h3>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 md:gap-x-16">
+              {CAPABILITIES.map((c, i) => (
+                <div
+                  key={c.title}
+                  className={`flex items-start gap-4 py-6 ${i < CAPABILITIES.length - 2 ? "border-b border-greenDark/10" : ""}`}
+                >
+                  <ShieldCheck size={20} className="text-greenDark/40 shrink-0 mt-1" />
+                  <div>
+                    <h4 className="text-base font-bold text-greenDark mb-1">{c.title}</h4>
+                    <p className="text-sm text-gray-600 leading-relaxed font-medium">{c.desc}</p>
+                  </div>
                 </div>
               ))}
             </div>
           </div>
         </section>
 
-        {/* CORE FEATURES */}
-        <section className="py-32 px-6">
-          <div className="max-w-7xl mx-auto">
-            <div className="text-center mb-20 max-w-3xl mx-auto">
-              <h2 className="text-4xl md:text-5xl font-black tracking-tighter text-greenDark mb-6">Built for velocity and scale</h2>
-              <p className="text-lg text-gray-600 font-medium leading-relaxed">
-                We've combined advanced static analysis with LLMs to create a system that deeply understands your architecture.
+        {/* STATS — grounded in what the product actually does, not fabricated adoption numbers */}
+        <section className="py-20 px-6 bg-greenDark">
+          <div className="max-w-6xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-10">
+            {STATS.map((s) => (
+              <div key={s.label} className="text-center md:text-left">
+                <div className="text-4xl md:text-5xl font-black tracking-tighter text-cream mb-2">{s.value}</div>
+                <div className="text-sm text-cream/60 font-medium leading-snug">{s.label}</div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* FINAL CTA — a boxed callout, not a full-bleed band */}
+        <section className="py-28 px-6">
+          <div className="max-w-6xl mx-auto rounded-[2.5rem] bg-greenDark px-8 md:px-16 py-20 relative overflow-hidden">
+            <div className="absolute inset-0 opacity-10 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-greenLight to-transparent mix-blend-overlay"></div>
+            <div className="relative z-10 text-center flex flex-col items-center">
+              <h2 className="text-4xl md:text-6xl font-black tracking-tighter mb-6 text-cream">Automate your engineering standards.</h2>
+              <p className="text-lg text-cream/80 font-medium mb-10 max-w-xl mx-auto leading-relaxed">
+                Connect a repository and get your first automated review on the next pull request.
               </p>
+              <Link to={authUser ? "/settings" : "/signup"} className="inline-flex items-center gap-3 px-10 py-5 bg-cream hover:bg-white text-greenDark rounded-xl font-bold text-lg transition-all shadow-2xl hover:-translate-y-1 group">
+                Start Free Trial <ChevronRight size={22} className="group-hover:translate-x-1 transition-transform" />
+              </Link>
             </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              <FeatureCard
-                icon={GitPullRequest}
-                title="Automated PR Reviews"
-                description="Instantly reviews every commit, catching bugs, security flaws, and style violations before a human ever has to look."
-              />
-              <FeatureCard
-                icon={MessageSquare}
-                title="Codebase AI Chatbot"
-                description="Stop searching through endless files. Ask our chatbot complex questions about your repository and get accurate, context-aware answers."
-              />
-              <FeatureCard
-                icon={ShieldCheck}
-                title="Enterprise-Grade Security"
-                description="Proactively identifies vulnerable dependencies, hardcoded secrets, and unsafe execution patterns in real-time."
-              />
-              <FeatureCard
-                icon={Github}
-                title="Native GitHub Integration"
-                description="No clunky CI pipelines to configure. Install the HatMind GitHub App and get automated reviews on your repositories instantly."
-              />
-            </div>
-          </div>
-        </section>
-
-        {/* DETAILED PLATFORM FEATURES */}
-        <section className="py-32 px-6 bg-white border-t border-greenDark/5">
-          <div className="max-w-7xl mx-auto">
-            <div className="mb-16">
-              <h2 className="text-sm font-bold text-greenLight tracking-widest uppercase mb-4">The Platform</h2>
-              <h3 className="text-4xl md:text-5xl font-black tracking-tight text-greenDark">A complete suite for engineering excellence.</h3>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-              <DetailedFeatureCard
-                icon={CheckCircle2} title="Actionable Feedback"
-                description="No more vague complaints. Get precise line-by-line comments with suggested code fixes you can commit immediately."
-              />
-              <DetailedFeatureCard
-                icon={Box} title="Semantic Architecture Understanding"
-                description="We index your repository using advanced Retrieval-Augmented Generation (RAG) to understand how your services connect."
-              />
-              <DetailedFeatureCard
-                icon={Code2} title="Style Standard Enforcement"
-                description="Automatically enforce your team's specific coding guidelines and best practices without manual nitpicking."
-              />
-              <DetailedFeatureCard
-                icon={LayoutDashboard} title="Custom Review Thresholds"
-                description="Configure exactly what HatMind should care about. Silence minor styling issues and focus purely on logic if preferred."
-              />
-              <DetailedFeatureCard
-                icon={Activity} title="Real-Time Analytics"
-                description="Track how fast your team is merging PRs and monitor the reduction in post-deployment bugs over time."
-              />
-              <DetailedFeatureCard
-                icon={Zap} title="Sub-Second Latency"
-                description="Our optimized engine processes standard pull requests in seconds, never blocking your deployment pipelines."
-              />
-            </div>
-          </div>
-        </section>
-
-        {/* BOTTOM CTA */}
-        <section className="py-40 px-6 relative overflow-hidden bg-greenDark">
-          <div className="absolute inset-0 opacity-10 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-greenLight to-transparent mix-blend-overlay"></div>
-
-          <div className="max-w-5xl mx-auto text-center relative z-10 flex flex-col items-center">
-            <h2 className="text-5xl md:text-7xl font-black tracking-tighter mb-8 text-cream">Automate your engineering standards.</h2>
-            <p className="text-xl text-cream/80 font-medium mb-12 max-w-2xl mx-auto leading-relaxed">
-              Join the engineering teams who have eliminated their code review bottlenecks and ship with confidence.
-            </p>
-            <Link to={authUser ? "/settings" : "/signup"} className="inline-flex items-center gap-3 px-12 py-6 bg-cream hover:bg-white text-greenDark rounded-xl font-bold text-xl transition-all shadow-2xl hover:-translate-y-1 group">
-              Start Free Trial <ChevronRight size={24} className="group-hover:translate-x-1 transition-transform" />
-            </Link>
           </div>
         </section>
 
         {/* FOOTER */}
-        <footer className="bg-cream pt-20 pb-10 px-6">
+        <footer className="bg-cream pt-4 pb-10 px-6">
           <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between gap-12 mb-20">
             <div className="flex flex-col gap-6 max-w-sm">
               <Link to="/" className="flex items-center gap-3">
