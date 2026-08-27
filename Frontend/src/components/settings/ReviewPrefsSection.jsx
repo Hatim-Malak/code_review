@@ -84,8 +84,8 @@ const ReviewPrefsSection = () => {
             onChange={(e) => setPrefsData({ ...prefsData, defaultModel: e.target.value })}
             className="w-full md:w-1/2 px-4 py-3 rounded-xl border border-gray-200 focus:border-greenDark focus:ring-1 focus:ring-greenDark outline-none bg-white transition-all text-gray-700"
           >
-            <option value="openai/gpt-oss-120b">Llama 3.3 70B Versatile (Recommended)</option>
-            <option value="openai/gpt-oss-20b">Llama 3.1 8B Instant (Faster)</option>
+            <option value="openai/gpt-oss-120b">GPT-OSS 120B (Recommended)</option>
+            <option value="openai/gpt-oss-20b">GPT-OSS 20B (Faster)</option>
           </select>
         </div>
 

@@ -46,7 +46,7 @@ const ChatPrefsSection = () => {
                   className="mt-1 w-4 h-4 text-greenDark focus:ring-greenDark"
                 />
                 <div>
-                  <div className="text-sm font-semibold text-gray-900">Llama 3.3 70B Versatile</div>
+                  <div className="text-sm font-semibold text-gray-900">GPT-OSS 120B</div>
                   <div className="text-sm text-gray-500 mt-1">Slower, but highly capable. Best for complex reasoning, architectural questions, and deep debugging.</div>
                 </div>
               </label>
@@ -64,7 +64,7 @@ const ChatPrefsSection = () => {
                 />
                 <div>
                   <div className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-                    Llama 3.1 8B Instant 
+                    GPT-OSS 20B 
                     <span className="px-2 py-0.5 bg-greenLight/10 text-greenDark text-xs rounded-full font-medium">Recommended</span>
                   </div>
                   <div className="text-sm text-gray-500 mt-1">Extremely fast responses. Great for quick questions, syntax help, and general chat.</div>
