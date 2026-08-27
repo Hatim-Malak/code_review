@@ -10,7 +10,7 @@ const ReviewPrefsSection = () => {
   const [prefsData, setPrefsData] = useState({
     defaultMinSeverity: authUser?.preferences?.review?.defaultMinSeverity || "info",
     activeTriggers: authUser?.preferences?.review?.activeTriggers || ["pr", "push"],
-    defaultModel: authUser?.preferences?.review?.defaultModel || "llama-3.3-70b-versatile"
+    defaultModel: authUser?.preferences?.review?.defaultModel || "openai/gpt-oss-120b"
   });
 
   const handleUpdate = async (e) => {
@@ -84,8 +84,8 @@ const ReviewPrefsSection = () => {
             onChange={(e) => setPrefsData({ ...prefsData, defaultModel: e.target.value })}
             className="w-full md:w-1/2 px-4 py-3 rounded-xl border border-gray-200 focus:border-greenDark focus:ring-1 focus:ring-greenDark outline-none bg-white transition-all text-gray-700"
           >
-            <option value="llama-3.3-70b-versatile">Llama 3.3 70B Versatile (Recommended)</option>
-            <option value="llama-3.1-8b-instant">Llama 3.1 8B Instant (Faster)</option>
+            <option value="openai/gpt-oss-120b">Llama 3.3 70B Versatile (Recommended)</option>
+            <option value="openai/gpt-oss-20b">Llama 3.1 8B Instant (Faster)</option>
           </select>
         </div>
 

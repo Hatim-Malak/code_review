@@ -122,7 +122,7 @@ export const useChat = create((set, get) => ({
     }
   },
 
-  sendMessage: async (query, model_name = "llama-3.1-8b-instant") => {
+  sendMessage: async (query, model_name = "openai/gpt-oss-20b") => {
     const { chats, activeSessionId, selectedRepoId } = get();
     if (!query.trim()) return toast.error("Please enter a message");
     if (!selectedRepoId) return toast.error("Please select a repository first");

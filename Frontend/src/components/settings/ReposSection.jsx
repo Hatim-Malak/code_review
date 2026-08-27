@@ -14,7 +14,7 @@ const ReposSection = () => {
   const [prefsData, setPrefsData] = useState({
     minSeverity: "info",
     activeTriggers: ["pr", "push"],
-    model: "llama-3.3-70b-versatile"
+    model: "openai/gpt-oss-120b"
   });
 
   useEffect(() => {
@@ -27,7 +27,7 @@ const ReposSection = () => {
     setPrefsData({
       minSeverity: prefs.minSeverity || "info",
       activeTriggers: prefs.activeTriggers || ["pr", "push"],
-      model: prefs.model || "llama-3.3-70b-versatile"
+      model: prefs.model || "openai/gpt-oss-120b"
     });
   };
 
@@ -183,8 +183,8 @@ const ReposSection = () => {
                   onChange={(e) => setPrefsData({ ...prefsData, model: e.target.value })}
                   className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:border-greenDark focus:ring-1 focus:ring-greenDark outline-none bg-white transition-all text-gray-700"
                 >
-                  <option value="llama-3.3-70b-versatile">Llama 3.3 70B Versatile</option>
-                  <option value="llama-3.1-8b-instant">Llama 3.1 8B Instant</option>
+                  <option value="openai/gpt-oss-120b">Llama 3.3 70B Versatile</option>
+                  <option value="openai/gpt-oss-20b">Llama 3.1 8B Instant</option>
                 </select>
               </div>
 

@@ -8,7 +8,7 @@ const ChatPrefsSection = () => {
   const { updateGlobalPreferences, isUpdatingPreferences } = useSettingsStore();
 
   const [prefsData, setPrefsData] = useState({
-    defaultModel: authUser?.preferences?.chat?.defaultModel || "llama-3.1-8b-instant",
+    defaultModel: authUser?.preferences?.chat?.defaultModel || "openai/gpt-oss-20b",
   });
 
   const handleUpdate = async (e) => {
@@ -35,13 +35,13 @@ const ChatPrefsSection = () => {
             <p className="text-sm text-gray-500 mb-3">Select the AI model that will be used by default when you start a new conversation.</p>
             <div className="space-y-3">
               <label className={`flex items-start gap-4 p-4 border rounded-xl cursor-pointer transition-colors ${
-                prefsData.defaultModel === "llama-3.3-70b-versatile" ? "border-greenDark bg-greenLight/5 ring-1 ring-greenDark" : "border-gray-200 bg-white hover:bg-gray-50"
+                prefsData.defaultModel === "openai/gpt-oss-120b" ? "border-greenDark bg-greenLight/5 ring-1 ring-greenDark" : "border-gray-200 bg-white hover:bg-gray-50"
               }`}>
                 <input
                   type="radio"
                   name="chatModel"
-                  value="llama-3.3-70b-versatile"
-                  checked={prefsData.defaultModel === "llama-3.3-70b-versatile"}
+                  value="openai/gpt-oss-120b"
+                  checked={prefsData.defaultModel === "openai/gpt-oss-120b"}
                   onChange={(e) => setPrefsData({ ...prefsData, defaultModel: e.target.value })}
                   className="mt-1 w-4 h-4 text-greenDark focus:ring-greenDark"
                 />
@@ -52,13 +52,13 @@ const ChatPrefsSection = () => {
               </label>
 
               <label className={`flex items-start gap-4 p-4 border rounded-xl cursor-pointer transition-colors ${
-                prefsData.defaultModel === "llama-3.1-8b-instant" ? "border-greenDark bg-greenLight/5 ring-1 ring-greenDark" : "border-gray-200 bg-white hover:bg-gray-50"
+                prefsData.defaultModel === "openai/gpt-oss-20b" ? "border-greenDark bg-greenLight/5 ring-1 ring-greenDark" : "border-gray-200 bg-white hover:bg-gray-50"
               }`}>
                 <input
                   type="radio"
                   name="chatModel"
-                  value="llama-3.1-8b-instant"
-                  checked={prefsData.defaultModel === "llama-3.1-8b-instant"}
+                  value="openai/gpt-oss-20b"
+                  checked={prefsData.defaultModel === "openai/gpt-oss-20b"}
                   onChange={(e) => setPrefsData({ ...prefsData, defaultModel: e.target.value })}
                   className="mt-1 w-4 h-4 text-greenDark focus:ring-greenDark"
                 />

@@ -76,7 +76,7 @@ const ChatPage = () => {
     e.preventDefault();
     const msg = e.target.message.value;
     if (!msg.trim()) return;
-    const modelName = authUser?.preferences?.chat?.defaultModel || "llama-3.1-8b-instant";
+    const modelName = authUser?.preferences?.chat?.defaultModel || "openai/gpt-oss-20b";
     sendMessage(msg, modelName);
     e.target.reset();
     // Reset textarea height
@@ -85,7 +85,7 @@ const ChatPage = () => {
   };
 
   const sendSuggestion = (text) => {
-    const modelName = authUser?.preferences?.chat?.defaultModel || "llama-3.1-8b-instant";
+    const modelName = authUser?.preferences?.chat?.defaultModel || "openai/gpt-oss-20b";
     sendMessage(text, modelName);
   };
 
