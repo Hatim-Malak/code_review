@@ -21,6 +21,18 @@ const AccountSection = () => {
   const [avatarPreview, setAvatarPreview] = useState(authUser?.avatar || null);
   const fileInputRef = useRef(null);
 
+  React.useEffect(() => {
+    if (authUser) {
+      setFormData({
+        fullName: authUser.fullName || "",
+        email: authUser.email || "",
+      });
+      if (authUser.avatar) {
+        setAvatarPreview(authUser.avatar);
+      }
+    }
+  }, [authUser]);
+
   const handleProfileSubmit = async (e) => {
     e.preventDefault();
     try {

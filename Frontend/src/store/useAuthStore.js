@@ -26,10 +26,16 @@ export const useAuth = create(
           set({ isCheckingAuth: false })
         }
       },
-      requestSignupOtp: async (email) => {
+      requestSignupOtp: async (data) => {
         try {
+          const rawEmail = typeof data === "object" ? data?.email : data;
+          const email = typeof rawEmail === "string" ? rawEmail.trim().toLowerCase() : "";
+          if (!email) {
+            toast.error("Email is required");
+            return false;
+          }
           const res = await axiosInstance.post("/auth/request-signup-otp", { email });
-          toast.success(res.data.message);
+          toast.success(res.data.message || "OTP sent to email");
           return true;
         } catch (error) {
           toast.error(error.response?.data?.message || "An error occurred");
@@ -39,9 +45,13 @@ export const useAuth = create(
       signUp: async (data) => {
         set({ isSigningUp: true })
         try {
-          const res = await axiosInstance.post("/auth/signup", data)
+          const payload = {
+            ...data,
+            email: typeof data.email === "string" ? data.email.trim().toLowerCase() : data.email,
+          };
+          const res = await axiosInstance.post("/auth/signup", payload)
           set({ authUser: res.data })
-          toast.success("Account created succesfully")
+          toast.success("Account created successfully")
           return true;
         } catch (error) {
           toast.error(error.response?.data?.message || "An error occurred");
@@ -53,9 +63,13 @@ export const useAuth = create(
       signIn: async (data) => {
         set({ isSigningIn: true })
         try {
-          const res = await axiosInstance.post("/auth/login", data)
+          const payload = {
+            ...data,
+            email: typeof data.email === "string" ? data.email.trim().toLowerCase() : data.email,
+          };
+          const res = await axiosInstance.post("/auth/login", payload)
           set({ authUser: res.data })
-          toast.success("logged In successfully")
+          toast.success("Logged in successfully")
         } catch (error) {
           toast.error(error.response?.data?.message || "An error occurred")
         } finally {
@@ -75,8 +89,14 @@ export const useAuth = create(
       },
       forgotPassword: async (data) => {
         try {
-          const res = await axiosInstance.post("/auth/forgot-password", data);
-          toast.success(res.data.message);
+          const rawEmail = typeof data === "object" ? data?.email : data;
+          const email = typeof rawEmail === "string" ? rawEmail.trim().toLowerCase() : "";
+          if (!email) {
+            toast.error("Email is required");
+            return false;
+          }
+          const res = await axiosInstance.post("/auth/forgot-password", { email });
+          toast.success(res.data.message || "OTP sent if account exists");
           return true;
         } catch (error) {
           toast.error(error.response?.data?.message || "An error occurred");
@@ -85,8 +105,12 @@ export const useAuth = create(
       },
       resetPassword: async (data) => {
         try {
-          const res = await axiosInstance.post("/auth/reset-password", data);
-          toast.success(res.data.message);
+          const payload = {
+            ...data,
+            email: typeof data.email === "string" ? data.email.trim().toLowerCase() : data.email,
+          };
+          const res = await axiosInstance.post("/auth/reset-password", payload);
+          toast.success(res.data.message || "Password reset successfully");
           return true;
         } catch (error) {
           toast.error(error.response?.data?.message || "An error occurred");

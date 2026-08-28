@@ -8,9 +8,14 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 
 export const sendOTP = async (email, otp) => {
   try {
+    const recipientEmail = typeof email === "string" ? email.trim().toLowerCase() : email?.email?.trim()?.toLowerCase();
+    if (!recipientEmail) {
+      throw new Error(`Invalid recipient email: ${email}`);
+    }
+
     const data = await resend.emails.send({
       from: "onboarding@resend.dev", // Default sender for testing
-      to: email,
+      to: recipientEmail,
       subject: "Your Password Reset OTP",
       html: `
         <div style="font-family: Arial, sans-serif; padding: 20px;">
@@ -24,7 +29,7 @@ export const sendOTP = async (email, otp) => {
       `,
     });
 
-    logger.info(`OTP email sent to ${email}: ${data.id}`);
+    logger.info(`OTP email sent to ${recipientEmail}: ${data?.id || data?.data?.id || "success"}`);
     return data;
   } catch (error) {
     logger.error(`Error sending OTP email to ${email}: ${error.message}`);
@@ -34,9 +39,14 @@ export const sendOTP = async (email, otp) => {
 
 export const sendSignupOTP = async (email, otp) => {
   try {
+    const recipientEmail = typeof email === "string" ? email.trim().toLowerCase() : email?.email?.trim()?.toLowerCase();
+    if (!recipientEmail) {
+      throw new Error(`Invalid recipient email: ${email}`);
+    }
+
     const data = await resend.emails.send({
       from: "onboarding@resend.dev", // Default sender for testing
-      to: email,
+      to: recipientEmail,
       subject: "Welcome to HatMind - Verify Your Email",
       html: `
         <div style="font-family: Arial, sans-serif; padding: 20px;">
@@ -50,7 +60,7 @@ export const sendSignupOTP = async (email, otp) => {
       `,
     });
 
-    logger.info(`Signup OTP email sent to ${email}: ${data.id}`);
+    logger.info(`Signup OTP email sent to ${recipientEmail}: ${data?.id || data?.data?.id || "success"}`);
     return data;
   } catch (error) {
     logger.error(`Error sending Signup OTP email to ${email}: ${error.message}`);

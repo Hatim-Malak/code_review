@@ -12,13 +12,19 @@ const SignUpPage = () => {
   const [step, setStep] = useState(1); // 1 = Details, 2 = Verify OTP
   const [form, setForm] = useState({ fullName: "", email: "", password: "", otp: "" });
   const [isRequestingOtp, setIsRequestingOtp] = useState(false);
+  const [isResendingOtp, setIsResendingOtp] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
 
   const validateStep1 = useCallback(() => {
-    if (!form.fullName.trim()) return toast.error("Full name is required");
-    if (!form.email.trim()) return toast.error("Email is required");
-    if (!/\S+@\S+\.\S+/.test(form.email)) return toast.error("Invalid email format");
-    if (!form.password.trim()) return toast.error("Password is required");
-    if (form.password.length < 6) return toast.error("Password must be at least 6 characters");
+    const cleanFullName = form.fullName.trim();
+    const cleanEmail = form.email.trim().toLowerCase();
+    const cleanPassword = form.password.trim();
+
+    if (!cleanFullName) return toast.error("Full name is required");
+    if (!cleanEmail) return toast.error("Email is required");
+    if (!/\S+@\S+\.\S+/.test(cleanEmail)) return toast.error("Invalid email format");
+    if (!cleanPassword) return toast.error("Password is required");
+    if (cleanPassword.length < 6) return toast.error("Password must be at least 6 characters");
     return true;
   }, [form]);
 
@@ -27,19 +33,53 @@ const SignUpPage = () => {
     if (validateStep1() !== true) return;
     
     setIsRequestingOtp(true);
-    const success = await requestSignupOtp(form.email);
+    const cleanEmail = form.email.trim().toLowerCase();
+    const success = await requestSignupOtp(cleanEmail);
     setIsRequestingOtp(false);
     
     if (success) {
       setStep(2);
+      setResendCooldown(30);
     }
   }, [form.email, requestSignupOtp, validateStep1]);
 
+  const handleResendOtp = useCallback(async () => {
+    if (resendCooldown > 0 || isResendingOtp) return;
+    const cleanEmail = form.email.trim().toLowerCase();
+    if (!cleanEmail) {
+      toast.error("Email address is missing");
+      setStep(1);
+      return;
+    }
+
+    setIsResendingOtp(true);
+    const success = await requestSignupOtp(cleanEmail);
+    setIsResendingOtp(false);
+
+    if (success) {
+      setResendCooldown(30);
+    }
+  }, [form.email, resendCooldown, isResendingOtp, requestSignupOtp]);
+
+  React.useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const interval = setInterval(() => {
+      setResendCooldown((prev) => prev - 1);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [resendCooldown]);
+
   const handleFinalSignup = useCallback(async (e) => {
     e.preventDefault();
-    if (!form.otp || form.otp.length < 6) return toast.error("Please enter a valid 6-digit OTP");
+    const cleanOtp = form.otp.trim();
+    if (!cleanOtp || cleanOtp.length < 6) return toast.error("Please enter a valid 6-digit OTP");
     
-    await signUp(form);
+    await signUp({
+      fullName: form.fullName.trim(),
+      email: form.email.trim().toLowerCase(),
+      password: form.password,
+      otp: cleanOtp,
+    });
   }, [form, signUp]);
 
   return (
@@ -64,7 +104,7 @@ const SignUpPage = () => {
               {step === 1 ? "Create Account" : "Verify Email"}
             </h2>
             <p className="text-greenDark/70 font-medium">
-              {step === 1 ? "Sign up to get started with AI code reviews." : `We sent a code to ${form.email}`}
+              {step === 1 ? "Sign up to get started with AI code reviews." : `We sent a code to ${form.email.trim().toLowerCase()}`}
             </p>
           </div>
 
@@ -121,7 +161,7 @@ const SignUpPage = () => {
               <button
                 disabled={isRequestingOtp}
                 type="submit"
-                className="w-full mt-4 rounded-xl bg-greenLight hover:bg-greenDark disabled:bg-greenDark/50 transition-all duration-300 text-lg text-cream py-4 flex justify-center items-center gap-2 font-bold shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+                className="w-full mt-4 rounded-xl bg-greenLight hover:bg-greenDark disabled:bg-greenDark/50 transition-all duration-300 text-lg text-cream py-4 flex justify-center items-center gap-2 font-bold shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 cursor-pointer disabled:cursor-not-allowed"
               >
                 {isRequestingOtp ? (
                   <>
@@ -146,7 +186,7 @@ const SignUpPage = () => {
                     onChange={(e) => setForm({ ...form, otp: e.target.value })}
                     type="text"
                     maxLength={6}
-                    className="w-full rounded-xl pl-12 pr-5 py-4 border-2 border-greenDark/10 bg-white/50 focus:bg-white focus:border-greenLight focus:ring-4 focus:ring-greenLight/10 outline-none placeholder:text-greenDark/30 text-greenDark font-medium transition-all tracking-widest text-center"
+                    className="w-full rounded-xl pl-12 pr-5 py-4 border-2 border-greenDark/10 bg-white/50 focus:bg-white focus:border-greenLight focus:ring-4 focus:ring-greenLight/10 outline-none placeholder:text-greenDark/30 text-greenDark font-medium transition-all tracking-widest text-center text-lg"
                     placeholder="123456"
                   />
                 </div>
@@ -155,7 +195,7 @@ const SignUpPage = () => {
               <button
                 disabled={isSigningUp}
                 type="submit"
-                className="w-full mt-4 rounded-xl bg-greenLight hover:bg-greenDark disabled:bg-greenDark/50 transition-all duration-300 text-lg text-cream py-4 flex justify-center items-center gap-2 font-bold shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+                className="w-full mt-4 rounded-xl bg-greenLight hover:bg-greenDark disabled:bg-greenDark/50 transition-all duration-300 text-lg text-cream py-4 flex justify-center items-center gap-2 font-bold shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 cursor-pointer disabled:cursor-not-allowed"
               >
                 {isSigningUp ? (
                   <>
@@ -167,17 +207,26 @@ const SignUpPage = () => {
                 )}
               </button>
 
-              <div className="text-center mt-2">
+              <div className="flex flex-col items-center gap-2 mt-4 text-center">
                 <p className="text-sm text-greenDark/70 font-medium">
                   Didn't receive the code?{" "}
                   <button 
                     type="button"
-                    onClick={() => setStep(1)}
-                    className="text-greenLight hover:text-greenDark font-bold transition-colors"
+                    disabled={isResendingOtp || resendCooldown > 0}
+                    onClick={handleResendOtp}
+                    className="text-greenLight hover:text-greenDark font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                   >
-                    Go back and resend
+                    {isResendingOtp ? "Sending..." : resendCooldown > 0 ? `Resend code (${resendCooldown}s)` : "Resend code"}
                   </button>
                 </p>
+                
+                <button
+                  type="button"
+                  onClick={() => setStep(1)}
+                  className="text-xs text-greenDark/60 hover:text-greenDark underline transition-colors cursor-pointer"
+                >
+                  Change email address
+                </button>
               </div>
             </form>
           )}

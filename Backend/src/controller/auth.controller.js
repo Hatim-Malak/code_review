@@ -12,8 +12,11 @@ import OtpVerification from "../models/otp.model.js";
 
 export const requestSignupOtp = async (req, res, next) => {
     try {
-        const { email } = req.body;
-        if (!email) return res.status(400).json({ message: "Email is required" });
+        const rawEmail = typeof req.body === "string" ? req.body : req.body?.email || req.body?.data?.email;
+        const email = typeof rawEmail === "string" ? rawEmail.trim().toLowerCase() : rawEmail?.email?.trim()?.toLowerCase();
+        if (!email || !/\S+@\S+\.\S+/.test(email)) {
+            return res.status(400).json({ message: "Valid email is required" });
+        }
 
         const user = await User.findOne({ email });
         if (user) return res.status(400).json({ message: "Email already exists" });
@@ -41,7 +44,9 @@ export const requestSignupOtp = async (req, res, next) => {
 }
 
 export const signup = async (req, res, next) =>{
-    const {fullName,email,password,otp} = req.body
+    const { fullName, password, otp } = req.body;
+    const rawEmail = req.body?.email;
+    const email = typeof rawEmail === "string" ? rawEmail.trim().toLowerCase() : rawEmail?.email?.trim()?.toLowerCase();
     try {
         if (!fullName || !email || !password || !otp) {
             return res.status(400).json({ message: "All fields and OTP are required" })
@@ -104,7 +109,9 @@ export const signup = async (req, res, next) =>{
 }
 
 export const login = async (req, res, next) =>{
-    const {email,fullName,password} = req.body
+    const { password } = req.body;
+    const rawEmail = req.body?.email;
+    const email = typeof rawEmail === "string" ? rawEmail.trim().toLowerCase() : rawEmail?.email?.trim()?.toLowerCase();
     try {
         if (!email || !password) return res.status(400).json({message:"All fields are required"})
         if(password.length<6) return res.status(400).json({message:"The password must be greater than 6 characters"})
@@ -180,7 +187,8 @@ export const refresh = async (req, res, next) => {
 
 export const forgotPassword = async (req, res, next) => {
     try {
-        const { email } = req.body;
+        const rawEmail = typeof req.body === "string" ? req.body : req.body?.email || req.body?.data?.email;
+        const email = typeof rawEmail === "string" ? rawEmail.trim().toLowerCase() : rawEmail?.email?.trim()?.toLowerCase();
         if (!email) return res.status(400).json({ message: "Email is required" });
 
         const user = await User.findOne({ email });
@@ -213,7 +221,9 @@ export const forgotPassword = async (req, res, next) => {
 
 export const resetPassword = async (req, res, next) => {
     try {
-        const { email, otp, newPassword } = req.body;
+        const { otp, newPassword } = req.body;
+        const rawEmail = req.body?.email;
+        const email = typeof rawEmail === "string" ? rawEmail.trim().toLowerCase() : rawEmail?.email?.trim()?.toLowerCase();
         if (!email || !otp || !newPassword) {
             return res.status(400).json({ message: "All fields are required" });
         }
