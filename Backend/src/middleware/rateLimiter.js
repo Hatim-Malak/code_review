@@ -1,4 +1,4 @@
-import rateLimit from "express-rate-limit";
+import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import logger from "../lib/logger.js";
 
 const rateLimitHandler = (req, res) => {
@@ -9,9 +9,7 @@ const rateLimitHandler = (req, res) => {
 };
 
 const customIpKeyGenerator = (req) => {
-  let ip = req.ip || req.connection?.remoteAddress || '127.0.0.1';
-  // Strip port if it exists (e.g. 140.82.115.174:42510)
-  return ip.replace(/:\d+$/, '');
+  return ipKeyGenerator(req);
 };
 
 const userOrIpKeyGenerator = (req) => req.user?._id?.toString() || customIpKeyGenerator(req);

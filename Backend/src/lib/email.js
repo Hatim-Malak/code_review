@@ -13,8 +13,9 @@ export const sendOTP = async (email, otp) => {
       throw new Error(`Invalid recipient email: ${email}`);
     }
 
-    const data = await resend.emails.send({
-      from: "onboarding@resend.dev", // Default sender for testing
+    const fromAddress = process.env.EMAIL_FROM || "onboarding@resend.dev";
+    const response = await resend.emails.send({
+      from: fromAddress,
       to: recipientEmail,
       subject: "Your Password Reset OTP",
       html: `
@@ -29,8 +30,13 @@ export const sendOTP = async (email, otp) => {
       `,
     });
 
-    logger.info(`OTP email sent to ${recipientEmail}: ${data?.id || data?.data?.id || "success"}`);
-    return data;
+    if (response.error) {
+      logger.error(`Resend API Error sending OTP to ${recipientEmail}: ${JSON.stringify(response.error)}`);
+      throw new Error(response.error.message || "Failed to deliver OTP email");
+    }
+
+    logger.info(`OTP email sent successfully to ${recipientEmail}: ${response.data?.id || "OK"}`);
+    return response.data;
   } catch (error) {
     logger.error(`Error sending OTP email to ${email}: ${error.message}`);
     throw error;
@@ -44,8 +50,9 @@ export const sendSignupOTP = async (email, otp) => {
       throw new Error(`Invalid recipient email: ${email}`);
     }
 
-    const data = await resend.emails.send({
-      from: "onboarding@resend.dev", // Default sender for testing
+    const fromAddress = process.env.EMAIL_FROM || "onboarding@resend.dev";
+    const response = await resend.emails.send({
+      from: fromAddress,
       to: recipientEmail,
       subject: "Welcome to HatMind - Verify Your Email",
       html: `
@@ -60,8 +67,13 @@ export const sendSignupOTP = async (email, otp) => {
       `,
     });
 
-    logger.info(`Signup OTP email sent to ${recipientEmail}: ${data?.id || data?.data?.id || "success"}`);
-    return data;
+    if (response.error) {
+      logger.error(`Resend API Error sending Signup OTP to ${recipientEmail}: ${JSON.stringify(response.error)}`);
+      throw new Error(response.error.message || "Failed to deliver Signup OTP email");
+    }
+
+    logger.info(`Signup OTP email sent successfully to ${recipientEmail}: ${response.data?.id || "OK"}`);
+    return response.data;
   } catch (error) {
     logger.error(`Error sending Signup OTP email to ${email}: ${error.message}`);
     throw error;
